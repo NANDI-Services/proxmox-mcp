@@ -20,8 +20,9 @@ jobs:
       - run: npm run validate:manifest
       - run: npm test
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | sh -s -- -b /usr/local/bin
+          gitleaks version
+          gitleaks detect --source . --no-banner --redact
       - name: Dependency audit
         run: npm audit --audit-level=high
