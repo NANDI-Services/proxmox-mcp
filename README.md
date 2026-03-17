@@ -57,6 +57,7 @@ Submission metadata and assets are prepared in:
 - [SSH Setup and Batch Validation](docs/SSH_SETUP.md)
 - [VS Code MCP Setup](docs/VSCODE_SETUP.md)
 - [Marketplace Go-Live](docs/MARKETPLACE_GO_LIVE.md)
+- [Release Notes v0.1.4](docs/RELEASE_NOTES_0.1.4.md)
 - [Security Guide](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [FAQ](docs/FAQ.md)
