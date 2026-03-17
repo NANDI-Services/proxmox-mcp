@@ -20,7 +20,7 @@ program
 program
   .command("doctor")
   .description("Run post-install checks")
-  .option("--check <checks>", "Comma-separated checks: nodes,vms,cts,node-status,remote-op")
+  .option("--check <checks>", "Comma-separated checks: mcp-config,nodes,vms,cts,node-status,remote-op")
   .action(async (options: { check?: string }) => {
     await runDoctor(options.check);
   });

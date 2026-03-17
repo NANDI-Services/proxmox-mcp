@@ -12,12 +12,17 @@ Each user must create a token in their own Proxmox environment with minimum ACL 
 1. Install Node.js 20+.
 2. Run `npm install -g nandi-proxmox-mcp`.
 3. Run `nandi-proxmox-mcp setup` and complete guided onboarding.
-4. Run `nandi-proxmox-mcp doctor --check nodes,vms,cts,node-status,remote-op`.
+4. Run `nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op`.
 5. Open VS Code and confirm MCP server is registered (`.vscode/mcp.json`).
 
 Alternative direct run:
 - `npx nandi-proxmox-mcp setup`
 - `npx nandi-proxmox-mcp run`
+
+## VS Code / Codex plug-and-play paths
+- Custom server: use `.vscode/mcp.json` (root `servers` format).
+- Manifest install: use `mcp-manifest.json`.
+- User-level config template: `templates/vscode.user.mcp.template.json`.
 
 ## MCP tools included
 - Inventory: `listNodes`, `listVMs`, `listContainers`
@@ -37,6 +42,7 @@ Alternative direct run:
 - [Proxmox Token + ACL Setup](docs/PROXMOX_SETUP.md)
 - [SSH Setup and Batch Validation](docs/SSH_SETUP.md)
 - [VS Code MCP Setup](docs/VSCODE_SETUP.md)
+- [Marketplace Go-Live](docs/MARKETPLACE_GO_LIVE.md)
 - [Security Guide](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [FAQ](docs/FAQ.md)
@@ -51,3 +57,4 @@ Alternative direct run:
 
 ## License
 MIT. See LICENSE.
+

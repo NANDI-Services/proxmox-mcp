@@ -1,12 +1,10 @@
 {
-  "mcp": {
-    "servers": {
-      "nandi-proxmox-mcp": {
-        "command": "npx",
-        "args": ["nandi-proxmox-mcp", "run"],
-        "env": {
-          "NANDI_PROXMOX_CONFIG": "${workspaceFolder}\\.nandi-proxmox-mcp\\config.json"
-        }
+  "servers": {
+    "nandi-proxmox-mcp": {
+      "command": "npx",
+      "args": ["nandi-proxmox-mcp", "run"],
+      "env": {
+        "NANDI_PROXMOX_CONFIG": "${workspaceFolder}\\.nandi-proxmox-mcp\\config.json"
       }
     }
   }

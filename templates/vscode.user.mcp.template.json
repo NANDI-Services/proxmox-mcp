@@ -4,7 +4,7 @@
       "command": "npx",
       "args": ["nandi-proxmox-mcp", "run"],
       "env": {
-        "NANDI_PROXMOX_CONFIG": "__LOCAL_CONFIG_PATH__"
+        "NANDI_PROXMOX_CONFIG": "C:\\path\\to\\.nandi-proxmox-mcp\\config.json"
       }
     }
   }

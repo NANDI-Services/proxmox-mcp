@@ -21,10 +21,11 @@ The wizard asks for:
 
 ## 4. Validate
 ```powershell
-nandi-proxmox-mcp doctor --check nodes,vms,cts,node-status,remote-op
+nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
 
 ## 5. One-command script
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-win.ps1
 ```
+

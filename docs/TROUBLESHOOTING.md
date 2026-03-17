@@ -39,3 +39,30 @@ Regenerate token in Proxmox and update local config.
 ## 6) Remote operation timeouts
 - Check network latency and SSH responsiveness.
 - Increase timeout/backoff settings if needed.
+
+## 7) MCP config invalid or not discovered
+### Symptoms
+- Server does not appear in Codex/VS Code MCP list.
+- Add-server flow rejects local JSON.
+
+### Fix
+1. Ensure `.vscode/mcp.json` uses root `servers` (not nested under `mcp`).
+2. Run:
+```powershell
+nandi-proxmox-mcp doctor --check mcp-config
+```
+3. Regenerate with:
+```powershell
+nandi-proxmox-mcp setup
+```
+
+## 8) Manifest install fails
+### Symptoms
+- Manifest import rejected by client.
+
+### Fix
+1. Validate manifest locally:
+```powershell
+npm run validate:manifest
+```
+2. Confirm `mcp-manifest.json` fields: `schema_version`, `id`, `transport`, `runtime`.

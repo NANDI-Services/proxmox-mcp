@@ -11,3 +11,4 @@ Write-Host "Running setup wizard..."
 
 Write-Host "Running doctor checks..."
 & $PackageName doctor --check nodes,vms,cts,node-status,remote-op
+

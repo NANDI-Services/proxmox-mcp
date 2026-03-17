@@ -1,12 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { loadFileConfig } from "../config/fileConfig.js";
 import { ProxmoxClient } from "../proxmox/client.js";
 import { printReport, type ReportItem } from "./report.js";
 import { runSshBatch } from "../ssh/sshClient.js";
 import { pctExec } from "../ssh/pctExec.js";
+import { normalizeMcpConfigDocument, validateMcpConfig, validateMcpManifest } from "../config/installDescriptor.js";
 
 const parseRequestedChecks = (value?: string): Set<string> => {
   if (!value) {
-    return new Set(["nodes", "vms", "cts", "node-status", "remote-op"]);
+    return new Set(["mcp-config", "nodes", "vms", "cts", "node-status", "remote-op"]);
   }
 
   return new Set(value.split(",").map((segment) => segment.trim()).filter(Boolean));
@@ -14,11 +17,34 @@ const parseRequestedChecks = (value?: string): Set<string> => {
 
 export const runDoctor = async (checksArg?: string): Promise<void> => {
   const checks = parseRequestedChecks(checksArg);
+  const report: ReportItem[] = [];
   const config = await loadFileConfig();
   const client = new ProxmoxClient(config);
-  const report: ReportItem[] = [];
 
   let firstNode = "";
+
+  if (checks.has("mcp-config")) {
+    try {
+      const mcpPath = resolve(process.cwd(), ".vscode", "mcp.json");
+      const manifestPath = resolve(process.cwd(), "mcp-manifest.json");
+      const mcpRaw = await readFile(mcpPath, "utf8");
+      const normalized = normalizeMcpConfigDocument(mcpRaw);
+      const configValidation = validateMcpConfig(normalized.normalized);
+      if (!configValidation.ok) {
+        throw new Error(configValidation.errors.join(" | "));
+      }
+
+      const manifestRaw = await readFile(manifestPath, "utf8");
+      const manifestValidation = validateMcpManifest(JSON.parse(manifestRaw) as unknown);
+      if (!manifestValidation.ok) {
+        throw new Error(`Manifest invalid: ${manifestValidation.errors.join(" | ")}`);
+      }
+
+      report.push({ check: "mcpConfig", ok: true, detail: "MCP config and manifest are valid" });
+    } catch (error) {
+      report.push({ check: "mcpConfig", ok: false, detail: error instanceof Error ? error.message : "Unknown error" });
+    }
+  }
 
   if (checks.has("nodes")) {
     try {

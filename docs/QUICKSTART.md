@@ -4,7 +4,7 @@
 ```powershell
 npm install -g nandi-proxmox-mcp
 nandi-proxmox-mcp setup
-nandi-proxmox-mcp doctor --check nodes,vms,cts,node-status,remote-op
+nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
 
 ## Fast run (without global install)
@@ -21,3 +21,4 @@ Read full setup guides:
 - `PROXMOX_SETUP.md`
 - `SSH_SETUP.md`
 - `VSCODE_SETUP.md`
+
