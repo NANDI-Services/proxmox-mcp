@@ -24,6 +24,20 @@ Alternative direct run:
 - Manifest install: use `mcp-manifest.json`.
 - User-level config template: `templates/vscode.user.mcp.template.json`.
 
+## Install from MCP marketplace / plugin marketplace
+The npm package is already public, but marketplace discovery has an additional submission process.
+
+- MCP marketplace (`@mcp` in VS Code): submit server metadata + `mcp-manifest.json` + npm package reference.
+- Codex/VS Code recommended servers: publish the corresponding Agent Plugin in the configured plugin marketplace.
+
+Submission metadata and assets are prepared in:
+- `marketplace/listing.md`
+- `marketplace/security.md`
+- `marketplace/icon.png`
+- `marketplace/screenshot-setup.png`
+- `marketplace/mcp-registry/server.json`
+- `marketplace/agent-plugin-marketplace/.github/plugin/marketplace.json`
+
 ## MCP tools included
 - Inventory: `listNodes`, `listVMs`, `listContainers`
 - Status: `getNodeStatus`, `getVMStatus`, `getContainerStatus`

@@ -7,3 +7,7 @@ coverage/
 .env
 .vscode/mcp.json
 *.local.json
+.mcpregistry_github_token
+.mcpregistry_registry_token
+marketplace/mcp-registry/.mcpregistry_github_token
+marketplace/mcp-registry/.mcpregistry_registry_token
