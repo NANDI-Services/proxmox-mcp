@@ -1,13 +1,13 @@
 {
   "name": "nandi-proxmox-mcp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Open source Proxmox MCP server for secure VM/CT operations. Powered by NANDI Services.",
   "license": "MIT",
   "author": "NANDI Services",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "bin": {
-    "nandi-proxmox-mcp": "dist/cli/main.js"
+    "nandi-proxmox-mcp": "dist/src/cli/main.js"
   },
   "files": [
     "dist",
@@ -28,8 +28,8 @@
     "test": "vitest run",
     "validate:manifest": "node scripts/validate-manifest.mjs",
     "test:watch": "vitest",
-    "start": "node dist/index.js",
-    "cli": "node dist/cli/main.js",
+    "start": "node dist/src/index.js",
+    "cli": "node dist/src/cli/main.js",
     "prepare": "npm run build"
   },
   "dependencies": {

@@ -8,7 +8,7 @@ import { startMcpServer } from "../server/mcpServer.js";
 
 const program = new Command();
 
-program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.1.0");
+program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.1.2");
 
 program
   .command("setup")

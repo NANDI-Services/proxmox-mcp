@@ -12,7 +12,7 @@ export const createMcpServer = (config: RuntimeConfig): RunningServer => {
   const server = new McpServer(
     {
       name: "nandi-proxmox-mcp",
-      version: "0.1.0"
+      version: "0.1.2"
     },
     {
       capabilities: {
