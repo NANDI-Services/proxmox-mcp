@@ -1,0 +1,7 @@
+{
+  "snyk.advanced.organization": "bbf301f4-435b-4c8d-a832-17a80c2bbbf4",
+  "snyk.advanced.autoSelectOrganization": true,
+  "files.exclude": {
+    "**/.nandi-proxmox-mcp": true
+  }
+}

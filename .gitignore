@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.log
+.nandi-proxmox-mcp/
+.env.local
+.env
+.vscode/mcp.json
+*.local.json

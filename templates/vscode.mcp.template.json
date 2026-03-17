@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "nandi-proxmox-mcp": {
+        "command": "npx",
+        "args": ["nandi-proxmox-mcp", "run"],
+        "env": {
+          "NANDI_PROXMOX_CONFIG": "__LOCAL_CONFIG_PATH__"
+        }
+      }
+    }
+  }
+}
