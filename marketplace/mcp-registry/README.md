@@ -29,5 +29,6 @@ mcp-publisher publish
 
 ## 5) Verify listing
 ```powershell
-curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.ezesc/nandi-proxmox-mcp"
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.NANDI-Services/nandi-proxmox-mcp"
 ```
+

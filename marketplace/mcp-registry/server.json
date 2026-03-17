@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.PapiScholz/nandi-proxmox-mcp",
+  "name": "io.github.NANDI-Services/nandi-proxmox-mcp",
   "description": "Open-source MCP server for secure Proxmox node, VM, and LXC operations.",
   "repository": {
-    "url": "https://github.com/ezesc/proxmox-mcp",
+    "url": "https://github.com/NANDI-Services/proxmox-mcp",
     "source": "github"
   },
-  "version": "0.1.3",
+  "version": "0.1.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nandi-proxmox-mcp",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "transport": {
         "type": "stdio"
       },

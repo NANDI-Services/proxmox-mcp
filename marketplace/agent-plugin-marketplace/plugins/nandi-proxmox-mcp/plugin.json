@@ -4,10 +4,11 @@
   "version": "0.1.2",
   "description": "Install and use nandi-proxmox-mcp from Codex/VS Code plugin marketplace.",
   "publisher": "ezesc",
-  "homepage": "https://github.com/ezesc/proxmox-mcp",
-  "repository": "https://github.com/ezesc/proxmox-mcp",
+  "homepage": "https://github.com/NANDI-Services/proxmox-mcp",
+  "repository": "https://github.com/NANDI-Services/proxmox-mcp",
   "license": "MIT",
   "categories": ["mcp", "devops", "infrastructure"],
-  "support": "https://github.com/ezesc/proxmox-mcp/issues",
+  "support": "https://github.com/NANDI-Services/proxmox-mcp/issues",
   "icon": "../../icon.png"
 }
+

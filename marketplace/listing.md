@@ -29,8 +29,8 @@ It enables AI assistants in VS Code/Codex to securely perform:
 - MCP manifest: `mcp-manifest.json`
 
 ### Support
-- Issues: https://github.com/ezesc/proxmox-mcp/issues
-- Docs: https://github.com/ezesc/proxmox-mcp/tree/main/docs
+- Issues: https://github.com/NANDI-Services/proxmox-mcp/issues
+- Docs: https://github.com/NANDI-Services/proxmox-mcp/tree/main/docs
 
 ### Category Suggestions
 - Infrastructure
@@ -40,3 +40,4 @@ It enables AI assistants in VS Code/Codex to securely perform:
 ### Assets
 - icon: `marketplace/icon.png`
 - screenshot: `marketplace/screenshot-setup.png`
+
