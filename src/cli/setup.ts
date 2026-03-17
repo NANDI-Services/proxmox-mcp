@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { spawnSync } from "node:child_process";
 import { ProxmoxClient } from "../proxmox/client.js";
 import type { RuntimeConfig } from "../config/validate.js";
 import { runtimeConfigSchema } from "../config/validate.js";
@@ -16,6 +17,23 @@ import {
 
 const defaultConfigDir = resolve(process.cwd(), ".nandi-proxmox-mcp");
 const defaultConfigPath = resolve(defaultConfigDir, "config.json");
+
+export type SetupOptions = {
+  proxmoxHost?: string;
+  proxmoxPort?: number;
+  proxmoxUser?: string;
+  proxmoxRealm?: string;
+  tokenName?: string;
+  tokenSecret?: string;
+  allowInsecureTls?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUser?: string;
+  sshKeyPath?: string;
+  skipConnectivity?: boolean;
+};
+
+const defaultSshKeyPath = (): string => resolve(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".ssh", "id_ed25519");
 
 const ask = async (): Promise<RuntimeConfig> => {
   const rl = createInterface({ input, output });
@@ -34,7 +52,7 @@ const ask = async (): Promise<RuntimeConfig> => {
   const sshUser = (await rl.question("SSH user [root]: ")).trim() || "root";
   const sshKeyPath =
     (await rl.question("SSH private key path [~/.ssh/id_ed25519]: ")).trim() ||
-    resolve(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".ssh", "id_ed25519");
+    defaultSshKeyPath();
 
   rl.close();
 
@@ -53,6 +71,40 @@ const ask = async (): Promise<RuntimeConfig> => {
   });
 };
 
+const hasCliOverrides = (options: SetupOptions): boolean =>
+  Object.entries(options).some(([key, value]) => key !== "skipConnectivity" && value !== undefined);
+
+export const resolveSetupConfig = (options: SetupOptions): RuntimeConfig => {
+  const proxmoxHost = options.proxmoxHost?.trim();
+  const proxmoxUser = options.proxmoxUser?.trim();
+  const tokenName = options.tokenName?.trim();
+  const tokenSecret = options.tokenSecret?.trim();
+
+  const missing: string[] = [];
+  if (!proxmoxHost) missing.push("--proxmox-host");
+  if (!proxmoxUser) missing.push("--proxmox-user");
+  if (!tokenName) missing.push("--token-name");
+  if (!tokenSecret) missing.push("--token-secret");
+
+  if (missing.length > 0) {
+    throw new Error(`Non-interactive setup is missing required options: ${missing.join(", ")}`);
+  }
+
+  return runtimeConfigSchema.parse({
+    proxmoxHost,
+    proxmoxPort: options.proxmoxPort ?? 8006,
+    proxmoxUser,
+    proxmoxRealm: options.proxmoxRealm?.trim() || "pve",
+    tokenName,
+    tokenSecret,
+    allowInsecureTls: options.allowInsecureTls ?? false,
+    sshHost: options.sshHost?.trim() || proxmoxHost,
+    sshPort: options.sshPort ?? 22,
+    sshUser: options.sshUser?.trim() || "root",
+    sshKeyPath: options.sshKeyPath?.trim() || defaultSshKeyPath()
+  });
+};
+
 const validatePrereqs = async (): Promise<ReportItem[]> => {
   const checks: ReportItem[] = [];
   checks.push({
@@ -62,10 +114,31 @@ const validatePrereqs = async (): Promise<ReportItem[]> => {
   });
 
   const npmUserAgent = process.env.npm_config_user_agent;
+  if (npmUserAgent) {
+    checks.push({
+      check: "npm",
+      ok: true,
+      detail: npmUserAgent
+    });
+    return checks;
+  }
+
+  const npmCheck =
+    process.platform === "win32"
+      ? spawnSync("cmd.exe", ["/c", "npm", "--version"], { encoding: "utf8" })
+      : spawnSync("npm", ["--version"], { encoding: "utf8" });
+  const npmProbeFailure = npmCheck.error as NodeJS.ErrnoException | undefined;
+  const npmProbeError = npmProbeFailure?.message?.trim();
+  const npmProbeRestricted = npmProbeFailure?.code === "EPERM" || npmProbeFailure?.code === "EINVAL";
   checks.push({
     check: "npm",
-    ok: Boolean(npmUserAgent),
-    detail: npmUserAgent ?? "npm user agent not detected"
+    ok: npmCheck.status === 0 || npmProbeRestricted,
+    detail:
+      npmCheck.status === 0
+        ? `Detected npm ${npmCheck.stdout.trim()}`
+        : npmProbeRestricted
+          ? `npm probe skipped in restricted runtime (${npmProbeError})`
+          : (npmCheck.stderr || npmProbeError || "npm not available").trim()
   });
 
   return checks;
@@ -157,19 +230,21 @@ const connectivityChecks = async (config: RuntimeConfig): Promise<ReportItem[]> 
   return checks;
 };
 
-export const runSetup = async (): Promise<void> => {
+export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
   process.stdout.write("nandi-proxmox-mcp setup wizard\n");
   process.stdout.write("The API token is NOT provided by npm or MCP. You must create it in your own Proxmox server.\n\n");
 
   const prereq = await validatePrereqs();
   printReport("Prerequisites", prereq);
 
-  const config = await ask();
+  const config = hasCliOverrides(options) ? resolveSetupConfig(options) : await ask();
   await mkdir(defaultConfigDir, { recursive: true });
   await writeFile(defaultConfigPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   await writeVscodeConfig();
 
-  const connectivity = await connectivityChecks(config);
+  const connectivity = options.skipConnectivity
+    ? [{ check: "Connectivity", ok: true, detail: "Skipped by --skip-connectivity" }]
+    : await connectivityChecks(config);
   printReport("Connectivity", connectivity);
 
   const allOk = [...prereq, ...connectivity].every((item) => item.ok);

@@ -19,6 +19,34 @@ Alternative direct run:
 - `npx nandi-proxmox-mcp setup`
 - `npx nandi-proxmox-mcp run`
 
+Fastest repeatable setup for an existing Proxmox server:
+```powershell
+npx nandi-proxmox-mcp setup `
+  --proxmox-host <PROXMOX_HOST> `
+  --proxmox-user <PROXMOX_USER> `
+  --token-name <TOKEN_NAME> `
+  --token-secret "<TOKEN_SECRET>" `
+  --ssh-key-path "$env:USERPROFILE\\.ssh\\id_ed25519" `
+  --skip-connectivity
+```
+
+Fast doctor against a real container:
+```powershell
+npx nandi-proxmox-mcp doctor `
+  --check mcp-config,nodes,vms,cts,node-status,remote-op `
+  --ctid <CTID>
+```
+
+One-command Windows install:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-win.ps1 `
+  -ProxmoxHost <PROXMOX_HOST> `
+  -ProxmoxUser <PROXMOX_USER> `
+  -TokenName <TOKEN_NAME> `
+  -TokenSecret "<TOKEN_SECRET>" `
+  -DoctorCtid <CTID>
+```
+
 ## VS Code / Codex plug-and-play paths
 - Custom server: use `.vscode/mcp.json` (root `servers` format).
 - Manifest install: use `mcp-manifest.json`.

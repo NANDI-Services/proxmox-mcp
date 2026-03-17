@@ -39,6 +39,10 @@ Regenerate token in Proxmox and update local config.
 ## 6) Remote operation timeouts
 - Check network latency and SSH responsiveness.
 - Increase timeout/backoff settings if needed.
+- If `pct exec` is the failing step, rerun with an explicit container:
+```powershell
+nandi-proxmox-mcp doctor --check remote-op --ctid <CTID>
+```
 
 ## 7) MCP config invalid or not discovered
 ### Symptoms

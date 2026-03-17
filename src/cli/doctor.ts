@@ -15,7 +15,13 @@ const parseRequestedChecks = (value?: string): Set<string> => {
   return new Set(value.split(",").map((segment) => segment.trim()).filter(Boolean));
 };
 
-export const runDoctor = async (checksArg?: string): Promise<void> => {
+export type DoctorOptions = {
+  check?: string;
+  ctid?: number;
+};
+
+export const runDoctor = async (options: DoctorOptions = {}): Promise<void> => {
+  const checksArg = options.check;
   const checks = parseRequestedChecks(checksArg);
   const report: ReportItem[] = [];
   const config = await loadFileConfig();
@@ -110,7 +116,7 @@ export const runDoctor = async (checksArg?: string): Promise<void> => {
       report.push({ check: "sshBatch", ok: false, detail: error instanceof Error ? error.message : "Unknown error" });
     }
 
-    const ctid = Number.parseInt(process.env.NANDI_DOCTOR_CTID ?? "0", 10);
+    const ctid = options.ctid ?? Number.parseInt(process.env.NANDI_DOCTOR_CTID ?? "0", 10);
     if (Number.isFinite(ctid) && ctid > 0) {
       try {
         await pctExec(
@@ -133,7 +139,7 @@ export const runDoctor = async (checksArg?: string): Promise<void> => {
       report.push({
         check: "pctExec",
         ok: false,
-        detail: "Set NANDI_DOCTOR_CTID environment variable to validate CT remote operation"
+        detail: "Pass --ctid <id> or set NANDI_DOCTOR_CTID to validate CT remote operation"
       });
     }
   }
