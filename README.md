@@ -96,6 +96,7 @@ Transport:
 - `MCP_TRANSPORT=stdio|http` (default: `stdio`)
 - `MCP_HOST` (default: `0.0.0.0`)
 - `MCP_PORT` (default: `3000`)
+- `MCP_ALLOWED_HOSTS` (optional, comma-separated). In wildcard bind mode (`0.0.0.0`/`::`), allowed hosts include `localhost`, `127.0.0.1`, `::1` plus configured runtime hosts (`PROXMOX_HOST`, `PROXMOX_SSH_HOST`) and any values in this variable.
 
 ## Access Tiers
 - `read-only`: read/list/status/log tools.

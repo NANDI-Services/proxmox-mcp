@@ -5,11 +5,13 @@ import { runSetup } from "./setup.js";
 import { runDoctor } from "./doctor.js";
 import { loadFileConfig } from "../config/fileConfig.js";
 import { loadEnvConfig } from "../config/env.js";
+import { logger } from "../logging/logger.js";
+import { installGlobalProcessErrorHandlers } from "../runtime/processGuards.js";
 import { startMcpServer } from "../server/mcpServer.js";
 
 const program = new Command();
 
-program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.2.0");
+program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.2.2");
 
 program
   .command("setup")
@@ -47,4 +49,11 @@ program
     await startMcpServer(config);
   });
 
-void program.parseAsync(process.argv);
+installGlobalProcessErrorHandlers();
+
+void program.parseAsync(process.argv).catch((error: unknown) => {
+  logger.error("CLI execution failed", {
+    error: error instanceof Error ? error.message : "unknown"
+  });
+  process.exit(1);
+});

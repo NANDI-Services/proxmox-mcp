@@ -6,12 +6,12 @@
     "url": "https://github.com/NANDI-Services/proxmox-mcp",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nandi-proxmox-mcp",
-      "version": "0.2.0",
+      "version": "0.2.2",
       "transport": {
         "type": "stdio"
       },

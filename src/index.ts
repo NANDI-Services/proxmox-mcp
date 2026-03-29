@@ -1,6 +1,7 @@
 import { loadEnvConfig } from "./config/env.js";
 import { loadFileConfig } from "./config/fileConfig.js";
 import { logger } from "./logging/logger.js";
+import { installGlobalProcessErrorHandlers } from "./runtime/processGuards.js";
 import { startMcpServer } from "./server/mcpServer.js";
 import type { RuntimeConfig } from "./config/validate.js";
 
@@ -23,15 +24,29 @@ const main = async (): Promise<void> => {
   };
 
   process.on("SIGINT", () => {
-    void shutdown("SIGINT");
+    void shutdown("SIGINT").catch((error: unknown) => {
+      logger.error("Shutdown failure", {
+        signal: "SIGINT",
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      process.exit(1);
+    });
   });
 
   process.on("SIGTERM", () => {
-    void shutdown("SIGTERM");
+    void shutdown("SIGTERM").catch((error: unknown) => {
+      logger.error("Shutdown failure", {
+        signal: "SIGTERM",
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      process.exit(1);
+    });
   });
 
   logger.info("nandi-proxmox-mcp started", { transport: running.mode });
 };
+
+installGlobalProcessErrorHandlers();
 
 void main().catch((error: unknown) => {
   logger.error("Fatal startup error", {

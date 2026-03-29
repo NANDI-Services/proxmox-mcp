@@ -1,7 +1,7 @@
 {
   "name": "nandi-proxmox-mcp",
   "mcpName": "io.github.NANDI-Services/nandi-proxmox-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Open source Proxmox MCP server for secure VM/CT operations. Powered by NANDI Services.",
   "license": "MIT",
   "author": "NANDI Services",
@@ -37,13 +37,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.2",
     "commander": "^13.1.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "undici": "^7.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.1",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.14.0",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3",
