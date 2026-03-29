@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 - 2026-03-29
 - Introduced declarative tool architecture (`ToolDescriptor` + endpoint descriptors) and policy engine.
 - Added Core + Advanced capability model with access tiers, category/tool filters, and confirmation guardrails.
 - Expanded Proxmox coverage to 140+ tools with generated catalog and metadata-driven docs (`docs/TOOLS.md`).

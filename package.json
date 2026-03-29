@@ -1,7 +1,7 @@
 {
   "name": "nandi-proxmox-mcp",
   "mcpName": "io.github.NANDI-Services/nandi-proxmox-mcp",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Open source Proxmox MCP server for secure VM/CT operations. Powered by NANDI Services.",
   "license": "MIT",
   "author": "NANDI Services",
