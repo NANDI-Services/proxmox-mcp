@@ -18,7 +18,7 @@ const main = async (): Promise<void> => {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info("Shutdown signal received", { signal });
-    await running.server.close();
+    await running.close();
     process.exit(0);
   };
 
@@ -30,7 +30,7 @@ const main = async (): Promise<void> => {
     void shutdown("SIGTERM");
   });
 
-  logger.info("nandi-proxmox-mcp started", { transport: "stdio" });
+  logger.info("nandi-proxmox-mcp started", { transport: running.mode });
 };
 
 void main().catch((error: unknown) => {

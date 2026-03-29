@@ -17,6 +17,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run build
+      - run: npm run docs:tools
+      - run: git diff --exit-code docs/TOOLS.md
       - run: npm run validate:manifest
       - run: npm test
       - name: Secret scan

@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { runSetup } from "./setup.js";
 import { runDoctor } from "./doctor.js";
 import { loadFileConfig } from "../config/fileConfig.js";
+import { loadEnvConfig } from "../config/env.js";
 import { startMcpServer } from "../server/mcpServer.js";
 
 const program = new Command();
@@ -40,9 +41,9 @@ program
 
 program
   .command("run")
-  .description("Run MCP server over stdio")
+  .description("Run MCP server (stdio by default, HTTP when MCP_TRANSPORT=http)")
   .action(async () => {
-    const config = await loadFileConfig();
+    const config = await loadFileConfig().catch(() => loadEnvConfig());
     await startMcpServer(config);
   });
 

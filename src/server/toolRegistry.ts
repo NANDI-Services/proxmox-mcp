@@ -1,15 +1,33 @@
-import type { RuntimeConfig } from "../config/validate.js";
-import { ProxmoxClient } from "../proxmox/client.js";
-import type { ToolResult } from "../guardian/result.js";
-import { listContainers, listNodes, listVMs } from "../tools/inventory.js";
-import { getContainerStatus, getNodeStatus, getVMStatus } from "../tools/status.js";
-import { startContainer, startVM, stopContainer, stopVM } from "../tools/control.js";
-import { dockerLogsInContainer, dockerPsInContainer, execInContainer, runRemoteDiagnostic } from "../tools/operations.js";
-import { sshBatchDiagnostics } from "../tools/diagnostics.js";
-import { schemas } from "./schemas.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ProxmoxClient } from "../proxmox/client.js";
+import type { RuntimeConfig } from "../config/validate.js";
+import { toolCatalog } from "../tools/catalog.js";
+import { loadPolicySettings, PolicyEngine } from "./policy.js";
+import type { ToolDescriptor } from "./toolMetadata.js";
+import { logger } from "../logging/logger.js";
 
-export const registerTools = (server: McpServer, config: RuntimeConfig): void => {
+const asMcp = (value: unknown) => ({
+  content: [
+    {
+      type: "text" as const,
+      text: JSON.stringify(value, null, 2)
+    }
+  ]
+});
+
+const toolAnnotations = (descriptor: ToolDescriptor) => ({
+  title: descriptor.title ?? descriptor.name,
+  readOnlyHint: descriptor.accessTier === "read-only",
+  destructiveHint: descriptor.destructive,
+  idempotentHint: descriptor.idempotent,
+  openWorldHint: false
+});
+
+type RegistryOptions = {
+  transport: "stdio" | "http";
+};
+
+export const registerTools = (server: McpServer, config: RuntimeConfig, options: RegistryOptions): void => {
   const proxmoxClient = new ProxmoxClient(config);
   const ssh = {
     host: config.sshHost,
@@ -19,58 +37,124 @@ export const registerTools = (server: McpServer, config: RuntimeConfig): void =>
     timeoutMs: 20_000
   };
 
-  const asMcp = <T>(result: ToolResult<T>) => ({
-    content: [
+  const policy = new PolicyEngine(loadPolicySettings());
+  let registered = 0;
+
+  for (const descriptor of toolCatalog) {
+    if (!policy.shouldRegister(descriptor, options.transport)) {
+      continue;
+    }
+
+    server.registerTool(
+      descriptor.name,
       {
-        type: "text" as const,
-        text: JSON.stringify(result, null, 2)
+        description: descriptor.description,
+        inputSchema: descriptor.inputShape,
+        annotations: toolAnnotations(descriptor),
+        _meta: {
+          category: descriptor.category,
+          accessTier: descriptor.accessTier,
+          destructive: descriptor.destructive,
+          confirmRequired: descriptor.confirmRequired,
+          idempotent: descriptor.idempotent,
+          transport: descriptor.transport,
+          module: descriptor.module,
+          deprecated: descriptor.deprecated === true
+        }
+      },
+      async (args) => {
+        if (descriptor.argGuard) {
+          const validation = descriptor.argGuard(args as Record<string, unknown>);
+          if (!validation.ok) {
+            return asMcp({
+              ok: false,
+              error: {
+                code: "TOOL_INPUT_REJECTED",
+                message: validation.message ?? "Input rejected by tool guard.",
+                hint: validation.hint
+              },
+              meta: {
+                tool: descriptor.name
+              }
+            });
+          }
+        }
+
+        const guard = policy.guardConfirmation(descriptor, args as Record<string, unknown>);
+        if (!guard.ok) {
+          return asMcp({
+            ok: false,
+            error: {
+              code: "CONFIRMATION_REQUIRED",
+              message: guard.message,
+              hint: "Re-run with confirm=true to execute this operation.",
+              impact: guard.impact
+            },
+            meta: {
+              tool: descriptor.name
+            }
+          });
+        }
+
+        return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
       }
-    ]
-  });
+    );
+    registered += 1;
 
-  server.tool("listNodes", "List Proxmox nodes.", schemas.emptyShape, async () => asMcp(await listNodes(proxmoxClient)));
-  server.tool("listVMs", "List VMs (node optional).", schemas.byNodeOptionalShape, async ({ node }) => asMcp(await listVMs(proxmoxClient, node)));
-  server.tool(
-    "listContainers",
-    "List LXC containers (node optional).",
-    schemas.byNodeOptionalShape,
-    async ({ node }) => asMcp(await listContainers(proxmoxClient, node))
-  );
+    for (const alias of descriptor.aliases ?? []) {
+      server.registerTool(
+        alias,
+        {
+          description: `${descriptor.description} (alias for ${descriptor.name})`,
+          inputSchema: descriptor.inputShape,
+          annotations: toolAnnotations(descriptor),
+          _meta: {
+            aliasFor: descriptor.name,
+            deprecated: true
+          }
+        },
+        async (args) => {
+          if (descriptor.argGuard) {
+            const validation = descriptor.argGuard(args as Record<string, unknown>);
+            if (!validation.ok) {
+              return asMcp({
+                ok: false,
+                error: {
+                  code: "TOOL_INPUT_REJECTED",
+                  message: validation.message ?? "Input rejected by tool guard.",
+                  hint: validation.hint
+                },
+                meta: {
+                  tool: alias,
+                  aliasFor: descriptor.name
+                }
+              });
+            }
+          }
 
-  server.tool("getNodeStatus", "Get node status.", schemas.byNodeShape, async ({ node }) => asMcp(await getNodeStatus(proxmoxClient, node)));
-  server.tool("getVMStatus", "Get VM status.", schemas.byVmShape, async ({ node, vmid }) => asMcp(await getVMStatus(proxmoxClient, node, vmid)));
-  server.tool(
-    "getContainerStatus",
-    "Get container status.",
-    schemas.byContainerShape,
-    async ({ node, vmid }) => asMcp(await getContainerStatus(proxmoxClient, node, vmid))
-  );
+          const guard = policy.guardConfirmation(descriptor, args as Record<string, unknown>);
+          if (!guard.ok) {
+            return asMcp({
+              ok: false,
+              error: {
+                code: "CONFIRMATION_REQUIRED",
+                message: guard.message,
+                hint: "Re-run with confirm=true to execute this operation.",
+                impact: guard.impact
+              },
+              meta: {
+                tool: alias,
+                aliasFor: descriptor.name
+              }
+            });
+          }
 
-  server.tool("startVM", "Start a VM.", schemas.byVmShape, async ({ node, vmid }) => asMcp(await startVM(proxmoxClient, node, vmid)));
-  server.tool("stopVM", "Stop a VM.", schemas.byVmShape, async ({ node, vmid }) => asMcp(await stopVM(proxmoxClient, node, vmid)));
-  server.tool(
-    "startContainer",
-    "Start an LXC container.",
-    schemas.byContainerShape,
-    async ({ node, vmid }) => asMcp(await startContainer(proxmoxClient, node, vmid))
-  );
-  server.tool(
-    "stopContainer",
-    "Stop an LXC container.",
-    schemas.byContainerShape,
-    async ({ node, vmid }) => asMcp(await stopContainer(proxmoxClient, node, vmid))
-  );
+          return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
+        }
+      );
+      registered += 1;
+    }
+  }
 
-  server.tool("execInContainer", "Run command in container via pct exec.", schemas.execInContainerShape, async ({ ctid, command }) => {
-    return asMcp(await execInContainer(ssh, ctid, command));
-  });
-  server.tool("dockerPsInContainer", "Run docker ps in CT.", schemas.dockerPsShape, async ({ ctid }) => asMcp(await dockerPsInContainer(ssh, ctid)));
-  server.tool("dockerLogsInContainer", "Fetch docker logs in CT.", schemas.dockerLogsShape, async ({ ctid, containerName, tail }) => {
-    return asMcp(await dockerLogsInContainer(ssh, ctid, containerName, tail));
-  });
-  server.tool("runRemoteDiagnostic", "Run safe diagnostic command in CT.", schemas.remoteDiagnosticShape, async ({ ctid, command }) => {
-    return asMcp(await runRemoteDiagnostic(ssh, ctid, command));
-  });
-
-  server.tool("sshBatchDiagnostics", "Diagnose SSH batch failures.", schemas.emptyShape, async () => asMcp(await sshBatchDiagnostics(ssh)));
+  logger.info("Tool registry initialized", { registered, transport: options.transport });
 };

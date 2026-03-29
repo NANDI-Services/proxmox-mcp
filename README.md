@@ -2,102 +2,172 @@
 
 Open source MCP Server for Proxmox, powered by NANDI Services.
 
-`nandi-proxmox-mcp` lets users connect to their own Proxmox server and operate nodes, VMs, and CT/LXC securely via MCP tools in VS Code.
+`nandi-proxmox-mcp` is now a **Core + Advanced** MCP platform with declarative tool metadata, security tiers, destructive confirmation flow, and dual transport (`stdio` + Streamable HTTP).
 
-## Important: API token ownership
-The Proxmox API token is **not** delivered by npm, VS Code, or this MCP package.
-Each user must create a token in their own Proxmox environment with minimum ACL permissions.
+## Highlights
+- 120+ Proxmox tools (descriptor-driven catalog).
+- Access tiers: `read-only`, `read-execute`, `full`.
+- Filters: `PVE_CATEGORIES`, `PVE_TOOL_BLACKLIST`, `PVE_TOOL_WHITELIST`.
+- Destructive guardrails: `confirm=true` enforcement.
+- Runtime split: `PVE_MODULE_MODE=core|advanced`.
+- Transport: `MCP_TRANSPORT=stdio|http` with `/health` and `/ready`.
+- Backward compatibility for legacy tool names (`listNodes`, `listVMs`, `listContainers`, etc.) via aliases.
 
-## 5-minute Quickstart (Windows)
-1. Install Node.js 20+.
-2. Run `npm install -g nandi-proxmox-mcp`.
-3. Run `nandi-proxmox-mcp setup` and complete guided onboarding.
-4. Run `nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op`.
-5. Open VS Code and confirm MCP server is registered (`.vscode/mcp.json`).
-
-Alternative direct run:
-- `npx nandi-proxmox-mcp setup`
-- `npx nandi-proxmox-mcp run`
-
-Fastest repeatable setup for an existing Proxmox server:
+## Quickstart (npx)
 ```powershell
-npx nandi-proxmox-mcp setup `
-  --proxmox-host <PROXMOX_HOST> `
-  --proxmox-user <PROXMOX_USER> `
-  --token-name <TOKEN_NAME> `
-  --token-secret "<TOKEN_SECRET>" `
-  --ssh-key-path "$env:USERPROFILE\\.ssh\\id_ed25519" `
-  --skip-connectivity
+$env:PROXMOX_HOST="pve.local"
+$env:PROXMOX_PORT="8006"
+$env:PROXMOX_USER="svc_mcp"
+$env:PROXMOX_REALM="pve"
+$env:PROXMOX_TOKEN_NAME="nandi-mcp"
+$env:PROXMOX_TOKEN_SECRET="<SECRET>"
+$env:PROXMOX_SSH_HOST="pve.local"
+$env:PROXMOX_SSH_USER="root"
+$env:PROXMOX_SSH_KEY_PATH="$env:USERPROFILE\.ssh\id_ed25519"
+
+npx nandi-proxmox-mcp run
 ```
 
-Fast doctor against a real container:
+Or guided setup:
 ```powershell
-npx nandi-proxmox-mcp doctor `
-  --check mcp-config,nodes,vms,cts,node-status,remote-op `
-  --ctid <CTID>
+npx nandi-proxmox-mcp setup
+npx nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
 
-One-command Windows install:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-win.ps1 `
-  -ProxmoxHost <PROXMOX_HOST> `
-  -ProxmoxUser <PROXMOX_USER> `
-  -TokenName <TOKEN_NAME> `
-  -TokenSecret "<TOKEN_SECRET>" `
-  -DoctorCtid <CTID>
+## Quickstart (Docker)
+`Dockerfile` supports both transports.
+
+stdio mode:
+```bash
+docker build -t nandi-proxmox-mcp .
+docker run --rm -i \
+  -e PROXMOX_HOST=pve.local \
+  -e PROXMOX_USER=svc_mcp \
+  -e PROXMOX_REALM=pve \
+  -e PROXMOX_TOKEN_NAME=nandi-mcp \
+  -e PROXMOX_TOKEN_SECRET=xxxxx \
+  -e PROXMOX_SSH_HOST=pve.local \
+  -e PROXMOX_SSH_USER=root \
+  -e PROXMOX_SSH_KEY_PATH=/keys/id_ed25519 \
+  nandi-proxmox-mcp
 ```
 
-## VS Code / Codex plug-and-play paths
-- Custom server: use `.vscode/mcp.json` (root `servers` format).
-- Manifest install: use `mcp-manifest.json`.
-- User-level config template: `templates/vscode.user.mcp.template.json`.
+HTTP mode:
+```bash
+docker run --rm -p 3000:3000 \
+  -e MCP_TRANSPORT=http \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_PORT=3000 \
+  -e PROXMOX_HOST=pve.local \
+  -e PROXMOX_USER=svc_mcp \
+  -e PROXMOX_REALM=pve \
+  -e PROXMOX_TOKEN_NAME=nandi-mcp \
+  -e PROXMOX_TOKEN_SECRET=xxxxx \
+  -e PROXMOX_SSH_HOST=pve.local \
+  -e PROXMOX_SSH_USER=root \
+  -e PROXMOX_SSH_KEY_PATH=/keys/id_ed25519 \
+  nandi-proxmox-mcp
+```
 
-## Install from MCP marketplace / plugin marketplace
-The npm package is already public, but marketplace discovery has an additional submission process.
+Health/readiness:
+- `GET /health`
+- `GET /ready`
+- MCP endpoint: `POST /mcp`
 
-- MCP marketplace (`@mcp` in VS Code): submit server metadata + `mcp-manifest.json` + npm package reference.
-- Codex/VS Code recommended servers: publish the corresponding Agent Plugin in the configured plugin marketplace.
+## Environment Variables
+Connection:
+- `PROXMOX_HOST` (required)
+- `PROXMOX_PORT` (default: `8006`)
+- `PROXMOX_USER` (required)
+- `PROXMOX_REALM` (default: `pve`)
+- `PROXMOX_TOKEN_NAME` (required)
+- `PROXMOX_TOKEN_SECRET` (required)
+- `PROXMOX_ALLOW_INSECURE_TLS` (`false` by default)
+- `PROXMOX_SSH_HOST`, `PROXMOX_SSH_PORT`, `PROXMOX_SSH_USER`, `PROXMOX_SSH_KEY_PATH`
 
-Submission metadata and assets are prepared in:
-- `marketplace/listing.md`
-- `marketplace/security.md`
-- `marketplace/icon.png`
-- `marketplace/screenshot-setup.png`
-- `marketplace/mcp-registry/server.json`
-- `marketplace/agent-plugin-marketplace/.github/plugin/marketplace.json`
+Security/capabilities:
+- `PVE_ACCESS_TIER=read-only|read-execute|full` (default: `full`)
+- `PVE_MODULE_MODE=core|advanced` (default: `core`)
+- `PVE_CATEGORIES=nodes,qemu,lxc,...`
+- `PVE_TOOL_BLACKLIST=tool_a,tool_b`
+- `PVE_TOOL_WHITELIST=tool_x,tool_y`
 
-## MCP tools included
-- Inventory: `listNodes`, `listVMs`, `listContainers`
-- Status: `getNodeStatus`, `getVMStatus`, `getContainerStatus`
-- Control: `startVM`, `stopVM`, `startContainer`, `stopContainer`
-- CT operations: `execInContainer`, `dockerPsInContainer`, `dockerLogsInContainer`, `runRemoteDiagnostic`, `sshBatchDiagnostics`
+Transport:
+- `MCP_TRANSPORT=stdio|http` (default: `stdio`)
+- `MCP_HOST` (default: `0.0.0.0`)
+- `MCP_PORT` (default: `3000`)
 
-## Security principles
-- No hardcoded host/token secrets in versioned files.
-- Local sensitive config generated in `.nandi-proxmox-mcp/config.json`.
-- Templates with placeholders only.
-- CI includes secret scanning and dependency scanning.
+## Access Tiers
+- `read-only`: read/list/status/log tools.
+- `read-execute`: includes lifecycle/task execution and selected operations.
+- `full`: includes create/update/delete/migrate/restore/admin operations.
+
+Operations marked as destructive and `confirmRequired` return a guardrail response unless `confirm=true` is provided.
+
+## Tool Catalog
+The complete catalog is generated from metadata:
+- [docs/TOOLS.md](docs/TOOLS.md)
+
+Regenerate after catalog changes:
+```bash
+npm run build
+npm run docs:tools
+```
+
+## VS Code / Codex / Cursor / Claude
+### VS Code / Codex
+Use generated `.vscode/mcp.json` via setup, or `mcp-manifest.json`.
+
+### Claude / Cursor (stdio)
+```json
+{
+  "mcpServers": {
+    "nandi-proxmox-mcp": {
+      "command": "npx",
+      "args": ["nandi-proxmox-mcp", "run"],
+      "env": {
+        "NANDI_PROXMOX_CONFIG": "/path/to/.nandi-proxmox-mcp/config.json"
+      }
+    }
+  }
+}
+```
+
+### Claude / Cursor (remote HTTP)
+```json
+{
+  "mcpServers": {
+    "nandi-proxmox-mcp": {
+      "type": "streamable-http",
+      "url": "http://localhost:3000/mcp"
+    }
+  }
+}
+```
+
+## Security Principles
+- No secrets committed in templates or tracked config.
+- Redaction of token/header/password-like fields in logs.
+- Policy engine for tier/category/whitelist/blacklist enforcement.
+- Confirm-required guardrails for destructive operations.
+- CI includes lint, typecheck, tests, manifest validation, gitleaks, and `npm audit`.
+
+## Development
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run docs:tools
+```
 
 ## Docs
 - [Quickstart](docs/QUICKSTART.md)
-- [Windows Installation](docs/INSTALL_WINDOWS.md)
-- [Proxmox Token + ACL Setup](docs/PROXMOX_SETUP.md)
-- [SSH Setup and Batch Validation](docs/SSH_SETUP.md)
-- [VS Code MCP Setup](docs/VSCODE_SETUP.md)
-- [Marketplace Go-Live](docs/MARKETPLACE_GO_LIVE.md)
-- [Release Notes v0.1.4](docs/RELEASE_NOTES_0.1.4.md)
 - [Security Guide](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [FAQ](docs/FAQ.md)
-- [CI Secrets Policy](docs/CI_SECRETS.md)
-
-## Development
-- `npm ci`
-- `npm run lint`
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
+- [Tool Catalog](docs/TOOLS.md)
+- [Migration 0.2.x](docs/MIGRATION_0_2.md)
 
 ## License
 MIT. See LICENSE.
-

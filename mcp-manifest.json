@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "nandi-proxmox-mcp",
   "display_name": "NANDI Proxmox MCP",
-  "description": "Open source Proxmox MCP server for secure node, VM and container operations. Powered by NANDI Services.",
+  "description": "Open source Proxmox MCP server with Core+Advanced security model, access tiers, and 140+ tools.",
   "transport": "stdio",
   "runtime": {
     "command": "npx",

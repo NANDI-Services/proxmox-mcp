@@ -28,6 +28,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "validate:manifest": "node scripts/validate-manifest.mjs",
+    "docs:tools": "node scripts/generate-tools-doc.mjs",
     "test:watch": "vitest",
     "start": "node dist/src/index.js",
     "cli": "node dist/src/cli/main.js",
@@ -36,11 +37,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.2",
     "commander": "^13.1.0",
+    "express": "^4.21.2",
     "undici": "^7.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.1",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "eslint": "^9.25.1",
     "typescript-eslint": "^8.30.1",

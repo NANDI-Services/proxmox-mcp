@@ -4,6 +4,16 @@ import type { ProxmoxApiEnvelope, ProxmoxContainer, ProxmoxNode, ProxmoxVm } fro
 import { buildTokenHeader } from "./auth.js";
 import { proxmoxEndpoints } from "./endpoints.js";
 import { ProxmoxHttpError } from "./errors.js";
+import { buildEndpointRequest, type EndpointDescriptor } from "./descriptor.js";
+
+type Primitive = string | number | boolean;
+type RequestInitCompat = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  query?: Record<string, Primitive | undefined>;
+  body?: Record<string, Primitive | undefined>;
+  timeoutMs?: number;
+  retries?: number;
+};
 
 export class ProxmoxClient {
   private readonly baseUrl: string;
@@ -23,25 +33,100 @@ export class ProxmoxClient {
     }
   }
 
-  private async request<T>(path: string, init?: { method?: "GET" | "POST" }): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        Authorization: this.authHeader,
-        "Content-Type": "application/json"
-      },
-      dispatcher: this.dispatcher
-    });
-
-    const text = await response.text();
-    const body = text.length > 0 ? (JSON.parse(text) as unknown) : undefined;
-
-    if (!response.ok) {
-      throw new ProxmoxHttpError(response.status, `HTTP ${response.status}`, body);
+  private buildUrl(path: string, query?: Record<string, Primitive | undefined>): string {
+    const target = new URL(`${this.baseUrl}${path}`);
+    if (!query) {
+      return target.toString();
     }
 
-    const envelope = body as ProxmoxApiEnvelope<T>;
-    return envelope.data;
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined) {
+        target.searchParams.set(key, String(value));
+      }
+    }
+
+    return target.toString();
+  }
+
+  private async performRequest<T>(path: string, init: RequestInitCompat): Promise<T> {
+    const controller = new AbortController();
+    const timeoutMs = init.timeoutMs ?? 15_000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const isBodyMethod = (init.method ?? "GET") !== "GET";
+      const body =
+        isBodyMethod && init.body
+          ? new URLSearchParams(
+              Object.fromEntries(
+                Object.entries(init.body)
+                  .filter(([, value]) => value !== undefined)
+                  .map(([key, value]) => [key, String(value)])
+              )
+            ).toString()
+          : undefined;
+
+      const response = await fetch(this.buildUrl(path, init.query), {
+        method: init.method ?? "GET",
+        headers: {
+          Authorization: this.authHeader,
+          ...(isBodyMethod ? { "Content-Type": "application/x-www-form-urlencoded" } : {})
+        },
+        body,
+        dispatcher: this.dispatcher,
+        signal: controller.signal
+      });
+
+      const text = await response.text();
+      const parsed = text.length > 0 ? (JSON.parse(text) as unknown) : undefined;
+
+      if (!response.ok) {
+        throw new ProxmoxHttpError(response.status, `HTTP ${response.status}`, parsed);
+      }
+
+      const envelope = parsed as ProxmoxApiEnvelope<T>;
+      return envelope.data;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(`Proxmox request timed out after ${timeoutMs}ms`);
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async request<T>(path: string, init: RequestInitCompat = {}): Promise<T> {
+    const retries = init.retries ?? 0;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await this.performRequest<T>(path, init);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
+  }
+
+  public async requestEndpoint<T>(descriptor: EndpointDescriptor, args: Record<string, unknown>): Promise<T> {
+    const req = buildEndpointRequest(descriptor, args);
+    const output = await this.request<T>(req.path, {
+      method: req.method,
+      query: req.query,
+      body: req.body,
+      timeoutMs: req.timeoutMs,
+      retries: req.retries
+    });
+
+    if (descriptor.outputSchema) {
+      return descriptor.outputSchema.parse(output) as T;
+    }
+
+    return output;
   }
 
   public async listNodes(): Promise<ProxmoxNode[]> {
@@ -61,11 +146,11 @@ export class ProxmoxClient {
   }
 
   public async startVm(node: string, vmid: number): Promise<string> {
-    return await this.request<string>(proxmoxEndpoints.startVm(node, vmid), { method: "POST" });
+    return await this.request<string>(proxmoxEndpoints.startVm(node, vmid), { method: "POST", timeoutMs: 20_000 });
   }
 
   public async stopVm(node: string, vmid: number): Promise<string> {
-    return await this.request<string>(proxmoxEndpoints.stopVm(node, vmid), { method: "POST" });
+    return await this.request<string>(proxmoxEndpoints.stopVm(node, vmid), { method: "POST", timeoutMs: 20_000 });
   }
 
   public async listContainers(node: string): Promise<ProxmoxContainer[]> {
@@ -77,10 +162,10 @@ export class ProxmoxClient {
   }
 
   public async startContainer(node: string, vmid: number): Promise<string> {
-    return await this.request<string>(proxmoxEndpoints.startContainer(node, vmid), { method: "POST" });
+    return await this.request<string>(proxmoxEndpoints.startContainer(node, vmid), { method: "POST", timeoutMs: 20_000 });
   }
 
   public async stopContainer(node: string, vmid: number): Promise<string> {
-    return await this.request<string>(proxmoxEndpoints.stopContainer(node, vmid), { method: "POST" });
+    return await this.request<string>(proxmoxEndpoints.stopContainer(node, vmid), { method: "POST", timeoutMs: 20_000 });
   }
 }
