@@ -28,6 +28,30 @@ export const mapError = (error: unknown): ToolError => {
       };
     }
 
+    if (message.includes("docker: command not found")) {
+      return {
+        code: "DOCKER_NOT_AVAILABLE",
+        message: "Docker is not installed or not available inside the target container.",
+        hint: "Use a container with Docker runtime or switch to non-Docker diagnostics."
+      };
+    }
+
+    if (message.includes("qemu guest agent is not running") || message.includes("no qemu guest agent configured")) {
+      return {
+        code: "QEMU_GUEST_AGENT_UNAVAILABLE",
+        message: "QEMU guest agent is not running in this VM.",
+        hint: "Enable/start qemu-guest-agent in the guest OS and retry."
+      };
+    }
+
+    if (message.includes("cloud-init") && message.includes("not")) {
+      return {
+        code: "CLOUDINIT_UNAVAILABLE",
+        message: "Cloud-init data is not available for this VM.",
+        hint: "Use a cloud-init-enabled VM or configure cloud-init first."
+      };
+    }
+
     return {
       code: "UNHANDLED_ERROR",
       message: error.message

@@ -186,7 +186,14 @@ for (const timeframe of timeframes) {
       accessTier: "read-only",
       idempotent: true,
       inputShape: target.shape,
-      endpoint: { id: `metrics.${target.entity}.${timeframe}`, method: "GET", path: target.path, pathParams: [...target.pathParams], queryParams: ["timeframe"] }
+      endpoint: {
+        id: `metrics.${target.entity}.${timeframe}`,
+        method: "GET",
+        path: target.path,
+        pathParams: [...target.pathParams],
+        queryParams: ["timeframe", "cf"],
+        queryDefaults: { timeframe, cf: "AVERAGE" }
+      }
     }));
   }
 }
@@ -300,7 +307,28 @@ for (const [category, name, path] of categoryEndpoints) {
     ...(path.includes("{userid}") ? { userid: z.string().min(1) } : {}),
     ...(path.includes("{guest_type}") ? { guest_type: z.enum(["qemu", "lxc"]).default("qemu") } : {})
   };
+  if (name === "pve_get_qemu_cloudinit_dump") {
+    shape.type = z.enum(["user", "network", "meta"]).optional();
+  }
   const pathParams = pathParamsFromPath(path);
+  const endpoint: EndpointDescriptor = {
+    id: name,
+    method: "GET",
+    path,
+    pathParams: pathParams.length > 0 ? pathParams : undefined
+  };
+  if (name === "pve_get_node_syslog") {
+    endpoint.queryParams = ["limit"];
+    endpoint.queryDefaults = { limit: 100 };
+    endpoint.timeoutMs = 60_000;
+  }
+  if (name === "pve_get_qemu_cloudinit_dump") {
+    endpoint.queryParams = ["type"];
+    endpoint.queryDefaults = { type: "user" };
+  }
+  if (name === "pve_list_node_services" || name === "pve_get_qemu_agent_info") {
+    endpoint.timeoutMs = 30_000;
+  }
   generated.push(apiTool({
     name,
     description: `${name.replace("pve_", "").replaceAll("_", " ")}.`,
@@ -309,7 +337,7 @@ for (const [category, name, path] of categoryEndpoints) {
     accessTier: "read-only",
     idempotent: true,
     inputShape: shape,
-    endpoint: { id: name, method: "GET", path, pathParams: pathParams.length > 0 ? pathParams : undefined }
+    endpoint
   }));
 }
 

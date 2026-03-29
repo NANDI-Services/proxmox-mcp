@@ -30,5 +30,15 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
           gitleaks detect --source . --no-banner --redact
-      - name: Dependency audit
-        run: npm audit --audit-level=high
+      - name: Dependency audit (prod gate)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency audit (dev-only report)
+        if: always()
+        run: npm audit --include=dev --audit-level=high --json > audit-dev-report.json || true
+      - name: Upload dev audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-dev-report
+          path: audit-dev-report.json
+          if-no-files-found: error

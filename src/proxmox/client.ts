@@ -81,7 +81,9 @@ export class ProxmoxClient {
       const parsed = text.length > 0 ? (JSON.parse(text) as unknown) : undefined;
 
       if (!response.ok) {
-        throw new ProxmoxHttpError(response.status, `HTTP ${response.status}`, parsed);
+        const detail = this.extractErrorDetail(parsed);
+        const message = detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status}`;
+        throw new ProxmoxHttpError(response.status, message, parsed);
       }
 
       const envelope = parsed as ProxmoxApiEnvelope<T>;
@@ -95,6 +97,27 @@ export class ProxmoxClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  private extractErrorDetail(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") {
+      return undefined;
+    }
+    if ("message" in body && typeof body.message === "string" && body.message.length > 0) {
+      return body.message;
+    }
+    if ("data" in body && typeof body.data === "string" && body.data.length > 0) {
+      return body.data;
+    }
+    if ("errors" in body && body.errors && typeof body.errors === "object") {
+      const entries = Object.entries(body.errors as Record<string, unknown>)
+        .filter(([, value]) => typeof value === "string" && value.length > 0)
+        .map(([key, value]) => `${key}: ${String(value)}`);
+      if (entries.length > 0) {
+        return entries.join("; ");
+      }
+    }
+    return undefined;
   }
 
   private async request<T>(path: string, init: RequestInitCompat = {}): Promise<T> {

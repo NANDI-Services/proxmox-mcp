@@ -10,6 +10,8 @@ export type EndpointDescriptor = {
   pathParams?: readonly string[];
   queryParams?: readonly string[];
   bodyParams?: readonly string[];
+  queryDefaults?: Record<string, string | number | boolean>;
+  bodyDefaults?: Record<string, string | number | boolean>;
   timeoutMs?: number;
   retries?: number;
   outputSchema?: z.ZodTypeAny;
@@ -48,6 +50,11 @@ export const buildEndpointRequest = (
     const value = args[key];
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       query[key] = value;
+    } else {
+      const fallback = descriptor.queryDefaults?.[key];
+      if (fallback !== undefined) {
+        query[key] = fallback;
+      }
     }
   }
 
@@ -55,6 +62,11 @@ export const buildEndpointRequest = (
     const value = args[key];
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       body[key] = value;
+    } else {
+      const fallback = descriptor.bodyDefaults?.[key];
+      if (fallback !== undefined) {
+        body[key] = fallback;
+      }
     }
   }
 
