@@ -168,6 +168,7 @@ npm run docs:tools
 - [Security Guide](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Tool Catalog](docs/TOOLS.md)
+- [Agent Runbook](AGENTS.md)
 - [Migration 0.2.x](docs/MIGRATION_0_2.md)
 - [Release Notes 0.2.1](docs/RELEASE_NOTES_0.2.1.md)
 - [Release Notes 0.2.0](docs/RELEASE_NOTES_0.2.0.md)
