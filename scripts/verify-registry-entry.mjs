@@ -70,6 +70,10 @@ if (officialMeta?.status !== "active") {
   fail(`Registry entry ${expected.name}@${expected.version} is not active.`, officialMeta);
 }
 
+if (officialMeta?.isLatest !== true) {
+  fail(`Registry entry ${expected.name}@${expected.version} is not marked as latest.`, officialMeta);
+}
+
 console.log(
   JSON.stringify(
     {

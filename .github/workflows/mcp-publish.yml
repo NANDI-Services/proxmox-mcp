@@ -98,8 +98,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+            echo "Registry already has the expected active latest descriptor; skipping publish."
+            exit 0
+          fi
+
           attempt=1
           until ./mcp-publisher publish "$MCP_DESCRIPTOR"; do
+            if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              echo "Registry converged despite publish error; treating as success."
+              exit 0
+            fi
             if [[ "$attempt" -ge 3 ]]; then
               echo "mcp-publisher publish failed after ${attempt} attempts" >&2
               exit 1
