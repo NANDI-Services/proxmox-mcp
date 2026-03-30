@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -18,9 +18,13 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run validate:package-metadata
+      - run: npm run validate:mcp-descriptors
       - run: npm run docs:tools
       - run: git diff --exit-code docs/TOOLS.md
       - run: npm run validate:manifest
+      - run: npm pack --dry-run
+      - run: npm ls @modelcontextprotocol/sdk undici express path-to-regexp
       - run: npm test
       - name: Secret scan
         run: |
@@ -31,7 +35,7 @@ jobs:
           gitleaks version
           gitleaks detect --source . --no-banner --redact
       - name: Dependency audit (prod gate)
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Dependency audit (dev-only report)
         if: always()
         run: npm audit --include=dev --audit-level=high --json > audit-dev-report.json || true

@@ -1,11 +1,6 @@
-name: MCP Registry Publish
+name: MCP Registry Publish (Manual Fallback)
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
   workflow_dispatch:
 
 concurrency:
@@ -48,6 +43,7 @@ jobs:
       - name: Validate manifest and descriptor sync
         run: |
           npm run validate:manifest
+          npm run validate:package-metadata
           npm run validate:mcp-descriptors
 
       - name: Verify npm package visibility and namespace

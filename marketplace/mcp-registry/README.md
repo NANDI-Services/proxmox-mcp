@@ -1,34 +1,29 @@
-# MCP Registry publish commands (manual)
+# MCP Registry manual fallback
 
-## 1) Install mcp-publisher (Windows)
-1. Download latest `mcp-publisher_windows_amd64.zip` from `modelcontextprotocol/registry` releases.
-2. Extract `mcp-publisher.exe`.
-3. Add its folder to `PATH`.
-4. Verify:
-```powershell
-mcp-publisher --version
-```
+Use this only when the automated `release.yml` flow cannot publish the descriptor.
 
-## 2) Initialize (optional)
-```powershell
-mcp-publisher init
-```
-Then replace generated `server.json` with `marketplace/mcp-registry/server.json`.
+## Publish
 
-## 3) Login
 ```powershell
 mcp-publisher login github
+mcp-publisher validate .mcp/server.json
+mcp-publisher publish .mcp/server.json
 ```
-Open `https://github.com/login/device`, paste code, approve.
 
-## 4) Publish to MCP registry
-From folder that contains `server.json`:
+## Verify
+
 ```powershell
-mcp-publisher publish
+node scripts/verify-registry-entry.mjs .mcp/server.json
 ```
 
-## 5) Verify listing
+Registry endpoint used by verification:
+
 ```powershell
-curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.NANDI-Services/nandi-proxmox-mcp"
+curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.NANDI-Services/nandi-proxmox-mcp"
 ```
 
+## Notes
+
+- `.mcp/server.json` is the canonical descriptor.
+- `marketplace/mcp-registry/server.json` must remain byte-for-byte aligned with it.
+- `npm run validate:package-metadata` and `npm run validate:mcp-descriptors` enforce the alignment before release.

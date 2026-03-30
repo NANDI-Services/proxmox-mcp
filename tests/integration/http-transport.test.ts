@@ -144,6 +144,30 @@ describe("http transport", () => {
     await running.close();
   });
 
+  it("rejects disallowed origin headers", async () => {
+    process.env.MCP_TRANSPORT = "http";
+    process.env.MCP_HOST = "0.0.0.0";
+    process.env.MCP_PORT = "0";
+    delete process.env.MCP_ALLOWED_HOSTS;
+    delete process.env.MCP_ALLOWED_ORIGINS;
+
+    const running = await startMcpServer(fakeConfig);
+    const response = await sendRawHttpRequest({
+      port: running.http?.port ?? 0,
+      path: "/health",
+      headers: {
+        Host: "127.0.0.1",
+        Origin: "https://evil.example"
+      }
+    });
+
+    expect(response.status).toBe(403);
+    const payload = JSON.parse(response.body) as { error?: { message?: string } };
+    expect(payload.error?.message?.toLowerCase()).toContain("origin");
+
+    await running.close();
+  });
+
   it("rejects malformed JSON-RPC payloads before transport execution", async () => {
     process.env.MCP_TRANSPORT = "http";
     process.env.MCP_HOST = "127.0.0.1";
@@ -199,6 +223,36 @@ describe("http transport", () => {
 
     const payload = (await third.json()) as { error: { message: string } };
     expect(payload.error.message).toContain("Too Many Requests");
+
+    await running.close();
+  });
+
+  it("rejects oversized /mcp request bodies with sanitized payloads", async () => {
+    process.env.MCP_TRANSPORT = "http";
+    process.env.MCP_HOST = "127.0.0.1";
+    process.env.MCP_PORT = "0";
+    process.env.MCP_MAX_BODY_SIZE_BYTES = "16";
+
+    const running = await startMcpServer(fakeConfig);
+    const base = `http://${running.http?.host}:${running.http?.port}`;
+
+    const res = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "ping",
+        params: { pad: "this payload is intentionally too large" }
+      })
+    });
+
+    expect(res.status).toBe(413);
+    const payload = (await res.json()) as { error: { message: string } };
+    expect(payload.error.message).toContain("too large");
 
     await running.close();
   });

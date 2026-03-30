@@ -16,8 +16,14 @@ Grant only the permissions required by enabled operations:
 ## Known high-impact failure modes
 1. HTTP 403 due to insufficient ACL.
 2. SSH interactive works but batch mode fails.
+3. HTTP transport rejects invalid Host/Origin headers when hardening is enabled.
 
 Both have runbooks in `docs/TROUBLESHOOTING.md`.
+
+## Runtime hardening
+- HTTP transport uses request-size limits, rate limiting, and sanitized errors.
+- SSH execution validates host/user arguments before invoking the local `ssh` binary.
+- Destructive operations still require explicit confirmation.
 
 ## TLS self-signed caution
 `allowInsecureTls=true` is for controlled lab environments only.

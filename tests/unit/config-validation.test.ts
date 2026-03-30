@@ -37,4 +37,22 @@ describe("config validation", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects unsafe SSH hosts", () => {
+    const result = runtimeConfigSchema.safeParse({
+      proxmoxHost: "pve.local",
+      proxmoxPort: 8006,
+      proxmoxUser: "svc_mcp",
+      proxmoxRealm: "pve",
+      tokenName: "token1",
+      tokenSecret: "verylongsecret",
+      allowInsecureTls: false,
+      sshHost: "-oProxyCommand=sh",
+      sshPort: 22,
+      sshUser: "root",
+      sshKeyPath: "C:/Users/test/.ssh/id_ed25519"
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

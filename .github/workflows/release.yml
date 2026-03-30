@@ -26,8 +26,10 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run validate:release
       - run: npm test
       - run: npm audit --include=dev --audit-level=moderate
+      - run: npm ls @modelcontextprotocol/sdk undici
       - run: npm ls express
       - run: npm ls path-to-regexp
       - run: npm pack --dry-run
@@ -58,6 +60,66 @@ jobs:
           fi
 
           npm publish --access public --provenance
+      - name: Verify published npm version
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          ACTUAL_VERSION="$(npm view nandi-proxmox-mcp version --json | tr -d '"')"
+          if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "npm version drift: expected $EXPECTED_VERSION, got $ACTUAL_VERSION" >&2
+            exit 1
+          fi
+      - name: Install mcp-publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+      - name: Validate descriptor with mcp-publisher
+        run: ./mcp-publisher validate .mcp/server.json
+      - name: Publish descriptor with retry
+        shell: bash
+        env:
+          MCP_DESCRIPTOR: .mcp/server.json
+        run: |
+          set -euo pipefail
+
+          if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+            echo "Registry already has the expected active latest descriptor; skipping publish."
+            exit 0
+          fi
+
+          attempt=1
+          until ./mcp-publisher publish "$MCP_DESCRIPTOR"; do
+            if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              echo "Registry converged despite publish error; treating as success."
+              exit 0
+            fi
+            if [[ "$attempt" -ge 3 ]]; then
+              echo "mcp-publisher publish failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep 15
+          done
+      - name: Verify registry convergence
+        shell: bash
+        env:
+          MCP_DESCRIPTOR: .mcp/server.json
+        run: |
+          set -euo pipefail
+          for attempt in {1..10}; do
+            if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo "Registry did not converge to the expected descriptor" >&2
+          exit 1
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "id": "nandi-proxmox-mcp",
   "display_name": "NANDI Proxmox MCP",
-  "description": "Open source Proxmox MCP server v0.2.3 with Core+Advanced security model, access tiers, and 143+ tools.",
+  "description": "Open source Proxmox MCP server v0.2.4 with Core+Advanced security model, access tiers, and 143+ tools.",
   "transport": "stdio",
   "runtime": {
     "command": "npx",

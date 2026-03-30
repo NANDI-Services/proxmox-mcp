@@ -1,8 +1,11 @@
 src/
 tests/
 .github/
-docs/
 vitest.config.ts
 eslint.config.js
 tsconfig.json
 tsconfig.build.json
+.mcpregistry_github_token
+.mcpregistry_registry_token
+marketplace/mcp-registry/.mcpregistry_github_token
+marketplace/mcp-registry/.mcpregistry_registry_token

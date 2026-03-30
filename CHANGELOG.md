@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 - 2026-03-30
+- Pinned and synchronized critical dependency versions for `@modelcontextprotocol/sdk`, `undici`, `express`, `path-to-regexp`, and eslint-related tooling.
+- Added npm `overrides`, verifiable package metadata, and release metadata validation for npm, MCP Registry, and marketplace artifacts.
+- Hardened Streamable HTTP transport with explicit host/origin checks, request-size limits, timeouts, rate limiting, and sanitized 413/400/500 responses.
+- Hardened SSH execution by validating host/user inputs, tightening SSH options, and limiting subprocess output buffers.
+- Preserved all existing Proxmox, SSH, and container-management functionality while tightening helper input validation.
+- Fixed marketplace plugin version drift and aligned release automation so registry publication follows npm publication instead of racing it.
+
 ## 0.2.0 - 2026-03-29
 - Introduced declarative tool architecture (`ToolDescriptor` + endpoint descriptors) and policy engine.
 - Added Core + Advanced capability model with access tiers, category/tool filters, and confirmation guardrails.

@@ -1,25 +1,61 @@
 {
   "name": "nandi-proxmox-mcp",
   "mcpName": "io.github.NANDI-Services/nandi-proxmox-mcp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Open source Proxmox MCP server for secure VM/CT operations. Powered by NANDI Services.",
   "license": "MIT",
-  "author": "NANDI Services",
+  "author": {
+    "name": "NANDI Services",
+    "url": "https://github.com/NANDI-Services"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NANDI-Services/proxmox-mcp.git"
+  },
+  "homepage": "https://github.com/NANDI-Services/proxmox-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/NANDI-Services/proxmox-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "proxmox",
+    "proxmox-ve",
+    "virtualization",
+    "devops",
+    "infrastructure",
+    "codex",
+    "cursor",
+    "claude"
+  ],
   "type": "module",
   "main": "dist/src/index.js",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "nandi-proxmox-mcp": "dist/src/cli/main.js"
   },
   "files": [
     "dist",
+    ".mcp/server.json",
+    "marketplace/mcp-registry/README.md",
+    "marketplace/mcp-registry/server.json",
     "templates",
-    "scripts",
+    "docs",
     "mcp-manifest.json",
     "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
     "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -28,7 +64,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "validate:manifest": "node scripts/validate-manifest.mjs",
+    "validate:package-metadata": "node scripts/validate-package-metadata.mjs",
     "validate:mcp-descriptors": "node scripts/check-mcp-descriptor-sync.mjs",
+    "validate:release": "npm run validate:manifest && npm run validate:package-metadata && npm run validate:mcp-descriptors",
     "verify:registry": "node scripts/verify-registry-entry.mjs .mcp/server.json",
     "docs:tools": "node scripts/generate-tools-doc.mjs",
     "test:watch": "vitest",
@@ -37,20 +75,27 @@
     "prepare": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.13.2",
-    "commander": "^13.1.0",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
-    "undici": "^7.8.0",
-    "zod": "^3.23.8"
+    "@modelcontextprotocol/sdk": "1.27.1",
+    "commander": "13.1.0",
+    "express": "5.2.1",
+    "express-rate-limit": "8.3.1",
+    "undici": "7.24.4",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@eslint/js": "^9.25.1",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.14.0",
-    "eslint": "^9.25.1",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.30.1",
-    "vitest": "^3.1.1"
+    "@eslint/js": "9.39.1",
+    "@types/express": "5.0.5",
+    "@types/node": "22.18.12",
+    "eslint": "9.39.4",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.57.1",
+    "vitest": "3.2.4"
+  },
+  "overrides": {
+    "@modelcontextprotocol/sdk": "1.27.1",
+    "express": "5.2.1",
+    "path-to-regexp": "8.4.0",
+    "undici": "7.24.4",
+    "eslint": "9.39.4"
   }
 }
