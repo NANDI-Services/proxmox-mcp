@@ -97,7 +97,7 @@ const createServerInstance = (config: RuntimeConfig, transport: "stdio" | "http"
   const server = new McpServer(
     {
       name: "nandi-proxmox-mcp",
-      version: "0.2.2"
+      version: "0.2.3"
     },
     {
       capabilities: {
