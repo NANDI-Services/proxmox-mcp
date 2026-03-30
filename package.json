@@ -28,6 +28,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "validate:manifest": "node scripts/validate-manifest.mjs",
+    "validate:mcp-descriptors": "node scripts/check-mcp-descriptor-sync.mjs",
+    "verify:registry": "node scripts/verify-registry-entry.mjs .mcp/server.json",
     "docs:tools": "node scripts/generate-tools-doc.mjs",
     "test:watch": "vitest",
     "start": "node dist/src/index.js",

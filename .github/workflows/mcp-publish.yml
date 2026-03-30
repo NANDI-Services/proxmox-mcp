@@ -1,0 +1,123 @@
+name: MCP Registry Publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-registry-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MCP_DESCRIPTOR: .mcp/server.json
+      MCP_MARKETPLACE_DESCRIPTOR: marketplace/mcp-registry/server.json
+      MCP_NAME: io.github.NANDI-Services/nandi-proxmox-mcp
+      MCP_REGISTRY_URL: https://registry.modelcontextprotocol.io/v0/servers
+      NPM_PACKAGE: nandi-proxmox-mcp
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate descriptor JSON with jq
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e . "$MCP_DESCRIPTOR" >/dev/null
+          jq -e . "$MCP_MARKETPLACE_DESCRIPTOR" >/dev/null
+          diff -u <(jq -S . "$MCP_DESCRIPTOR") <(jq -S . "$MCP_MARKETPLACE_DESCRIPTOR")
+
+      - name: Validate manifest and descriptor sync
+        run: |
+          npm run validate:manifest
+          npm run validate:mcp-descriptors
+
+      - name: Verify npm package visibility and namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(jq -r '.version' "$MCP_DESCRIPTOR")"
+          EXPECTED_PACKAGE_VERSION="$(jq -r '.packages[0].version' "$MCP_DESCRIPTOR")"
+          ACTUAL_NPM_VERSION="$(npm view "$NPM_PACKAGE" version --json | jq -r '.')"
+          ACTUAL_NPM_NAME="$(npm view "$NPM_PACKAGE" mcpName --json | jq -r '.')"
+
+          if [[ "$ACTUAL_NPM_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "npm version drift: expected $EXPECTED_VERSION, got $ACTUAL_NPM_VERSION" >&2
+            exit 1
+          fi
+
+          if [[ "$EXPECTED_PACKAGE_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "Descriptor package version mismatch: expected $EXPECTED_VERSION, got $EXPECTED_PACKAGE_VERSION" >&2
+            exit 1
+          fi
+
+          if [[ "$ACTUAL_NPM_NAME" != "$MCP_NAME" ]]; then
+            echo "npm mcpName drift: expected $MCP_NAME, got $ACTUAL_NPM_NAME" >&2
+            exit 1
+          fi
+
+      - name: Capture pre-publish registry snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS "$MCP_REGISTRY_URL?search=$MCP_NAME" | tee registry-before.json
+          jq '.servers | length' registry-before.json
+
+      - name: Install mcp-publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate descriptor with mcp-publisher
+        run: ./mcp-publisher validate "$MCP_DESCRIPTOR"
+
+      - name: Publish descriptor with retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt=1
+          until ./mcp-publisher publish "$MCP_DESCRIPTOR"; do
+            if [[ "$attempt" -ge 3 ]]; then
+              echo "mcp-publisher publish failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep 15
+          done
+
+      - name: Verify registry convergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..10}; do
+            if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              curl -fsS "$MCP_REGISTRY_URL?search=$MCP_NAME" | tee registry-after.json
+              jq '.servers | map({name: .server.name, version: .server.version, status: ._meta["io.modelcontextprotocol.registry/official"].status, isLatest: ._meta["io.modelcontextprotocol.registry/official"].isLatest})' registry-after.json
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo "Registry did not converge to the expected descriptor" >&2
+          exit 1
