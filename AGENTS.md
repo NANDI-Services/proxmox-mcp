@@ -52,3 +52,28 @@
 ### 6) Regla de seguridad de release
 - Si cualquier gate falla: detener publicación y corregir antes de continuar.
 
+## Documentation Sync Gate (Mandatory)
+
+### Trigger
+- Run this gate before closing any `change`, `fix`, `refactor`, release step, or commit-ready handoff.
+
+### Required doc check (always)
+Evaluate relevance and update if needed:
+- `README.md` for user/operator behavior, setup, usage, runtime contract, or security posture changes.
+- `AGENTS.md` for agent workflow, runbook, release process, or operating policy changes.
+- `CONTRIBUTING.md` for contributor workflow, Definition of Done, review checklist, or PR policy changes.
+
+### Blocking rule
+Task closure is blocked unless one of these is true:
+- Relevant docs were updated in the same change set.
+- A `no-doc-change` justification is provided with a verifiable reason tied to the exact change scope.
+
+### Allowed exception: `no-doc-change`
+- Must be explicit and auditable.
+- Must explain why no user, operator, agent-process, or contributor-facing contract changed.
+- Generic reasons such as "small change" or "internal only" are not sufficient without scope evidence.
+
+### Closure report requirement
+Every task closeout must include:
+- Which of `README.md`, `AGENTS.md`, `CONTRIBUTING.md` were updated.
+- If none were updated, the exact `no-doc-change` justification.

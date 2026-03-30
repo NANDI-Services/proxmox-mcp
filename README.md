@@ -235,6 +235,15 @@ npm run validate:release
 npm pack --dry-run
 ```
 
+## Documentation Maintenance Policy
+
+This repository enforces a pre-commit documentation sync gate.
+
+- Before closing a `change`, `fix`, or `refactor`, evaluate whether `README.md`, `AGENTS.md`, and `CONTRIBUTING.md` must be updated.
+- If a document is relevant to the behavioral or process impact, it must be updated in the same change set.
+- If no update is needed, an explicit `no-doc-change` justification is required.
+- A task is not considered ready-to-commit until this gate is satisfied.
+
 ## Docs
 
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
