@@ -1,19 +1,112 @@
 # nandi-proxmox-mcp
 
-Open source MCP Server for Proxmox, powered by NANDI Services.
+Open source MCP server for Proxmox VE, powered by NANDI Services.
 
-`nandi-proxmox-mcp` is now a **Core + Advanced** MCP platform with declarative tool metadata, security tiers, destructive confirmation flow, and dual transport (`stdio` + Streamable HTTP).
+`nandi-proxmox-mcp` exposes Proxmox inventory, lifecycle, storage, backup, networking, firewall, access, monitoring, SSH diagnostics, and guarded remote/container operations without removing the safety rails needed for production clusters.
 
-## Highlights
-- 120+ Proxmox tools (descriptor-driven catalog).
+## What stays enabled
+
+- 140+ tools across nodes, cluster, QEMU, LXC, storage, backup, tasks, network, firewall, pools, access, templates, monitoring, and remote operations.
 - Access tiers: `read-only`, `read-execute`, `full`.
-- Filters: `PVE_CATEGORIES`, `PVE_TOOL_BLACKLIST`, `PVE_TOOL_WHITELIST`.
-- Destructive guardrails: `confirm=true` enforcement.
-- Runtime split: `PVE_MODULE_MODE=core|advanced`.
-- Transport: `MCP_TRANSPORT=stdio|http` with `/health` and `/ready`.
-- Backward compatibility for legacy tool names (`listNodes`, `listVMs`, `listContainers`, etc.) via aliases.
+- Module split: `PVE_MODULE_MODE=core|advanced`.
+- Tool filters: `PVE_CATEGORIES`, `PVE_TOOL_BLACKLIST`, `PVE_TOOL_WHITELIST`.
+- Destructive guardrails via `confirm=true`.
+- Backward-compatible aliases such as `listNodes`, `getVMStatus`, `startVM`, `stopContainer`.
+- `stdio` transport for MCP clients and Streamable HTTP transport for controlled remote deployments.
 
-## Quickstart (npx)
+## Required permissions
+
+The server needs two trust channels and both are preserved intentionally:
+
+- Proxmox API token
+  - Used for inventory, lifecycle, configuration, and management endpoints.
+  - Keep ACLs minimal: only grant the roles needed for the tools you actually enable.
+- SSH batch access to the Proxmox host
+  - Required for `pct exec`, batch SSH diagnostics, and container-level Docker inspection tools.
+  - This is still necessary because Proxmox API coverage does not replace host-side `pct` and SSH-based diagnostics.
+
+More detail: [docs/PERMISSIONS.md](docs/PERMISSIONS.md)
+
+## Destructive confirmations
+
+Operations marked destructive do not execute unless the caller sends `confirm=true`.
+
+Examples:
+- VM/container stop, shutdown, reboot, suspend, delete, migrate, snapshot rollback
+- storage/network/firewall/access writes that can alter cluster state
+- advanced remote execution such as `pve_exec_in_container`
+
+The server returns a structured `CONFIRMATION_REQUIRED` error when confirmation is missing. This behavior is unchanged and reinforced.
+
+## Access tiers
+
+- `read-only`
+  - Inventory, status, logs, metrics, and non-mutating diagnostics.
+- `read-execute`
+  - Read-only plus selected execution/lifecycle actions.
+- `full`
+  - Create, update, delete, migrate, restore, and admin-level operations.
+
+`PVE_MODULE_MODE=core` hides advanced tools without renaming or removing canonical tool IDs from the codebase.
+
+## Runtime configuration
+
+### Environment variables
+
+Required:
+- `PROXMOX_HOST`
+- `PROXMOX_USER`
+- `PROXMOX_REALM`
+- `PROXMOX_TOKEN_NAME`
+- `PROXMOX_TOKEN_SECRET`
+- `PROXMOX_SSH_HOST`
+- `PROXMOX_SSH_USER`
+- `PROXMOX_SSH_KEY_PATH`
+
+Optional:
+- `PROXMOX_PORT` default `8006`
+- `PROXMOX_SSH_PORT` default `22`
+- `PROXMOX_ALLOW_INSECURE_TLS` default `false`
+- `PVE_ACCESS_TIER=read-only|read-execute|full`
+- `PVE_MODULE_MODE=core|advanced`
+- `PVE_CATEGORIES`
+- `PVE_TOOL_BLACKLIST`
+- `PVE_TOOL_WHITELIST`
+
+HTTP transport:
+- `MCP_TRANSPORT=stdio|http`
+- `MCP_HOST` default `0.0.0.0`
+- `MCP_PORT` default `3000`
+- `MCP_ALLOWED_HOSTS`
+- `MCP_ALLOWED_ORIGINS`
+- `MCP_RATE_LIMIT_WINDOW_MS`
+- `MCP_RATE_LIMIT_MAX`
+- `MCP_MAX_BODY_SIZE_BYTES`
+- `MCP_HEADERS_TIMEOUT_MS`
+- `MCP_REQUEST_TIMEOUT_MS`
+- `MCP_KEEPALIVE_TIMEOUT_MS`
+- `MCP_MAX_HEADERS_COUNT`
+
+### Local config file
+
+Setup writes `.nandi-proxmox-mcp/config.json` and `.vscode/mcp.json`.
+
+The config loader now rejects:
+- empty or malformed config paths
+- oversized config files
+- control characters in config paths
+
+## Quick start
+
+Guided setup:
+
+```powershell
+npx nandi-proxmox-mcp setup
+npx nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
+```
+
+Direct run with environment variables:
+
 ```powershell
 $env:PROXMOX_HOST="pve.local"
 $env:PROXMOX_PORT="8006"
@@ -28,151 +121,137 @@ $env:PROXMOX_SSH_KEY_PATH="$env:USERPROFILE\.ssh\id_ed25519"
 npx nandi-proxmox-mcp run
 ```
 
-Or guided setup:
-```powershell
-npx nandi-proxmox-mcp setup
-npx nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
-```
+## Security Model & Residual Risk
 
-## Quickstart (Docker)
-`Dockerfile` supports both transports.
+This MCP server operates real Proxmox infrastructure and is not a sandboxed environment.
 
-stdio mode:
-```bash
-docker build -t nandi-proxmox-mcp .
-docker run --rm -i \
-  -e PROXMOX_HOST=pve.local \
-  -e PROXMOX_USER=svc_mcp \
-  -e PROXMOX_REALM=pve \
-  -e PROXMOX_TOKEN_NAME=nandi-mcp \
-  -e PROXMOX_TOKEN_SECRET=xxxxx \
-  -e PROXMOX_SSH_HOST=pve.local \
-  -e PROXMOX_SSH_USER=root \
-  -e PROXMOX_SSH_KEY_PATH=/keys/id_ed25519 \
-  nandi-proxmox-mcp
-```
+### Trust Assumptions
+- The server is deployed in a trusted environment
+- Only authorized operators can access it
+- Network exposure is controlled (not publicly exposed)
+- Credentials are securely managed
 
-HTTP mode:
-```bash
-docker run --rm -p 3000:3000 \
-  -e MCP_TRANSPORT=http \
-  -e MCP_HOST=0.0.0.0 \
-  -e MCP_PORT=3000 \
-  -e PROXMOX_HOST=pve.local \
-  -e PROXMOX_USER=svc_mcp \
-  -e PROXMOX_REALM=pve \
-  -e PROXMOX_TOKEN_NAME=nandi-mcp \
-  -e PROXMOX_TOKEN_SECRET=xxxxx \
-  -e PROXMOX_SSH_HOST=pve.local \
-  -e PROXMOX_SSH_USER=root \
-  -e PROXMOX_SSH_KEY_PATH=/keys/id_ed25519 \
-  nandi-proxmox-mcp
-```
+### Residual Risks
+The following risks are inherent to the system design:
 
-Health/readiness:
+- **Privileged Operations**  
+  Full access tier and container execution capabilities can perform destructive or system-level actions.
+
+- **SSH Execution Boundary**  
+  Remote command execution relies on SSH and inherits the security posture of the target system.
+
+- **Optional Insecure TLS Mode**  
+  When enabled (`PROXMOX_ALLOW_INSECURE_TLS=true`), TLS certificate validation is bypassed and may expose connections to MITM attacks. Intended for lab use only.
+
+- **External Dependency Synchronization**  
+  Package distribution and listing visibility depend on npm, MCP Registry, and marketplace propagation timing.
+
+### Security Responsibilities
+Users are responsible for:
+- Restricting access to trusted operators only
+- Using least-privilege API tokens and SSH keys
+- Avoiding insecure TLS in production environments
+- Properly securing the underlying infrastructure
+
+### Safety Controls Implemented
+- Access tiers (read-only, read-execute, full)
+- Confirmation required for destructive operations
+- Input validation and command hardening
+- Rate limiting and request validation
+
+## HTTP hardening
+
+When `MCP_TRANSPORT=http` is enabled, the server now applies:
+
+- host allowlist enforcement, including wildcard-bind protection
+- origin validation for requests that send an `Origin` header
+- explicit body-size limits and sanitized `413` responses
+- rate limiting on `/mcp`
+- request/header/keep-alive timeouts
+- `X-Content-Type-Options: nosniff`
+- `Cache-Control: no-store`
+- sanitized error payloads without stack traces
+
+Health/readiness endpoints:
 - `GET /health`
 - `GET /ready`
-- MCP endpoint: `POST /mcp`
+- `POST /mcp`
 
-## Environment Variables
-Connection:
-- `PROXMOX_HOST` (required)
-- `PROXMOX_PORT` (default: `8006`)
-- `PROXMOX_USER` (required)
-- `PROXMOX_REALM` (default: `pve`)
-- `PROXMOX_TOKEN_NAME` (required)
-- `PROXMOX_TOKEN_SECRET` (required)
-- `PROXMOX_ALLOW_INSECURE_TLS` (`false` by default)
-- `PROXMOX_SSH_HOST`, `PROXMOX_SSH_PORT`, `PROXMOX_SSH_USER`, `PROXMOX_SSH_KEY_PATH`
+## SSH and command-execution hardening
 
-Security/capabilities:
-- `PVE_ACCESS_TIER=read-only|read-execute|full` (default: `full`)
-- `PVE_MODULE_MODE=core|advanced` (default: `core`)
-- `PVE_CATEGORIES=nodes,qemu,lxc,...`
-- `PVE_TOOL_BLACKLIST=tool_a,tool_b`
-- `PVE_TOOL_WHITELIST=tool_x,tool_y`
+Functionality is unchanged, but the execution path is stricter:
 
-Transport:
-- `MCP_TRANSPORT=stdio|http` (default: `stdio`)
-- `MCP_HOST` (default: `0.0.0.0`)
-- `MCP_PORT` (default: `3000`)
-- `MCP_ALLOWED_HOSTS` (optional, comma-separated). In wildcard bind mode (`0.0.0.0`/`::`), allowed hosts include `localhost`, `127.0.0.1`, `::1` plus configured runtime hosts (`PROXMOX_HOST`, `PROXMOX_SSH_HOST`) and any values in this variable.
+- local command execution still uses `spawn(..., { shell: false })`
+- SSH host/user values cannot smuggle CLI options
+- SSH uses `BatchMode`, `IdentitiesOnly`, public-key auth, and explicit connection liveness controls
+- output buffers are capped to prevent unbounded memory growth
+- `dockerLogsInContainer` now validates and shell-escapes container names instead of interpolating raw user input
+- arbitrary container command execution remains available only through the already-destructive `pve_exec_in_container` flow with confirmation required
 
-## Access Tiers
-- `read-only`: read/list/status/log tools.
-- `read-execute`: includes lifecycle/task execution and selected operations.
-- `full`: includes create/update/delete/migrate/restore/admin operations.
+## Security posture
 
-Operations marked as destructive and `confirmRequired` return a guardrail response unless `confirm=true` is provided.
+Mitigations in the repo:
+- pinned direct dependency versions and npm `overrides` for critical transitive packages
+- verifiable package metadata and repository links for npm/package scanners
+- descriptor/version sync validation for npm, registry, and marketplace artifacts
+- redaction of token/header/password-like values in logs
+- no stack traces or secrets returned to clients
+- CI gates for lint, typecheck, build, tests, metadata validation, descriptor sync, `npm pack --dry-run`, and audit
 
-## Tool Catalog
-The complete catalog is generated from metadata:
-- [docs/TOOLS.md](docs/TOOLS.md)
+Threat model and residual risks: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 
-Regenerate after catalog changes:
-```bash
-npm run build
-npm run docs:tools
-```
+## Publish flow
 
-## VS Code / Codex / Cursor / Claude
-### VS Code / Codex
-Use generated `.vscode/mcp.json` via setup, or `mcp-manifest.json`.
+Release order is strict:
 
-### Claude / Cursor (stdio)
-```json
-{
-  "mcpServers": {
-    "nandi-proxmox-mcp": {
-      "command": "npx",
-      "args": ["nandi-proxmox-mcp", "run"],
-      "env": {
-        "NANDI_PROXMOX_CONFIG": "/path/to/.nandi-proxmox-mcp/config.json"
-      }
-    }
-  }
-}
-```
+1. `npm run lint`
+2. `npm run typecheck`
+3. `npm run build`
+4. `npm test`
+5. `npm audit --include=dev --audit-level=moderate`
+6. `npm ls express`
+7. `npm ls path-to-regexp`
+8. `npm pack --dry-run`
+9. `npm pack`
+10. `npm whoami`
+11. `npm publish --access public`
+12. `npm view nandi-proxmox-mcp version`
+13. `mcp-publisher validate .mcp/server.json`
+14. `mcp-publisher publish .mcp/server.json`
 
-### Claude / Cursor (remote HTTP)
-```json
-{
-  "mcpServers": {
-    "nandi-proxmox-mcp": {
-      "type": "streamable-http",
-      "url": "http://localhost:3000/mcp"
-    }
-  }
-}
-```
+The tag-based `release.yml` now publishes npm first and only then publishes the MCP Registry descriptor, preventing npm/registry drift on the same version.
 
-## Security Principles
-- No secrets committed in templates or tracked config.
-- Redaction of token/header/password-like fields in logs.
-- Policy engine for tier/category/whitelist/blacklist enforcement.
-- Confirm-required guardrails for destructive operations.
-- CI includes lint, typecheck, tests, manifest validation, gitleaks, and `npm audit`.
+Manual fallback and troubleshooting: [docs/RELEASE.md](docs/RELEASE.md)
 
 ## Development
+
 ```bash
 npm ci
 npm run lint
 npm run typecheck
-npm test
 npm run build
-npm run docs:tools
+npm test
+npm run validate:release
+npm pack --dry-run
 ```
 
 ## Docs
-- [Quickstart](docs/QUICKSTART.md)
-- [Security Guide](docs/SECURITY.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Tool Catalog](docs/TOOLS.md)
-- [Agent Runbook](AGENTS.md)
-- [Migration 0.2.x](docs/MIGRATION_0_2.md)
-- [Release Notes 0.2.1](docs/RELEASE_NOTES_0.2.1.md)
-- [Release Notes 0.2.0](docs/RELEASE_NOTES_0.2.0.md)
+
+- [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/PERMISSIONS.md](docs/PERMISSIONS.md)
+- [docs/SECURITY.md](docs/SECURITY.md)
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- [docs/RELEASE.md](docs/RELEASE.md)
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- [docs/TOOLS.md](docs/TOOLS.md)
+- [docs/MARKETPLACE_GO_LIVE.md](docs/MARKETPLACE_GO_LIVE.md)
+
+## Registry and marketplace
+
+- npm: `https://www.npmjs.com/package/nandi-proxmox-mcp`
+- MCP Registry: `https://registry.modelcontextprotocol.io/`
+- MCP Marketplace listing: `https://mcp-marketplace.io/server/io-github-nandi-services-nandi-proxmox-mcp`
 
 ## License
-MIT. See LICENSE.
-// marketplace sync
+
+MIT. See [LICENSE](LICENSE).
