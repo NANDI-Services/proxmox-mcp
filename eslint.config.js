@@ -9,7 +9,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         project: "./tsconfig.json",
-        tsconfigRootDir: import.meta.dirname
+        tsconfigRootDir: globalThis.process.cwd()
       }
     },
     rules: {
@@ -25,6 +25,7 @@ export default tseslint.config(
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       globals: {
+        fetch: "readonly",
         process: "readonly",
         console: "readonly"
       }
