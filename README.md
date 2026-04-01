@@ -1,4 +1,6 @@
-# nandi-proxmox-mcp
+# NANDI Proxmox MCP
+
+> Turn your Proxmox cluster into an AI-driven platform with 140+ tools for automation, monitoring, and controlled execution.
 
 Open source MCP server for Proxmox VE, powered by NANDI Services.
 
