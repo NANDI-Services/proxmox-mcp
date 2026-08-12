@@ -1,6 +1,6 @@
 <!-- doc-governance:map v1 -->
-sealed_sha: 41050a2892a8d7e2927a5a6008a42dc105d398b7
-sealed_at: 2026-08-12T21:06:09.262Z
+sealed_sha: a6d7e1adfc8753524c7622841e333352423f918f
+sealed_at: 2026-08-12T23:42:43.112Z
 tool_version: 0.9.5
 sealed_dirty: []
 
@@ -42,6 +42,9 @@ title: Changelog
 headings:
   - H1: Changelog
   - H2: Unreleased
+  - H3: Fixed: the guided setup was unreachable
+  - H3: Added: onboarding for people who have never used an MCP
+  - H3: Corrected documentation
   - H3: Added: multiple Proxmox servers, and cluster-wide reach
   - H3: Behavior changes
   - H3: Fixed
@@ -56,6 +59,7 @@ headings:
   - H2: 0.1.0
 code_refs:
   - .mcp.json
+  - .nandi-proxmox-mcp/config.json
   - .vscode/mcp.json
   - /cluster/resources
   - /cluster/status
@@ -67,10 +71,17 @@ code_refs:
   - 0.1.2
   - 0.1.3
   - @modelcontextprotocol/sdk
+  - FAQ.md
   - NANDI-Services/proxmox-mcp
+  - PROXMOX_SETUP.md
+  - QUICKSTART.md
+  - README.md
+  - SSH_SETUP.md
+  - config.json
   - dist/src/...
   - docs/CLAUDE_CODE_SETUP.md
   - docs/E2E_LIVE_REPORT.json
+  - docs/EMPEZAR.md
   - docs/TOOLS.md
   - emulator/
   - emulator/README.md
@@ -84,6 +95,7 @@ headings:
   - H1: CLAUDE.md
   - H2: What this is
   - H2: Commands
+  - H3: The CLI has an interactive path that is easy to disable by accident
   - H2: Architecture
   - H3: Tools are data, not handlers
   - H3: Every call goes through the guardian
@@ -101,6 +113,7 @@ code_refs:
   - /cluster/resources
   - /etc/pve/priv/authorized_keys
   - AGENTS.md
+  - config.json
   - docs/E2E_LIVE_REPORT.json
   - docs/TOOLS.md
   - emulator/
@@ -109,19 +122,24 @@ code_refs:
   - package.json
   - process.env
   - scripts/validate-live-tools.mjs
+  - scripts/validate-package-metadata.mjs
   - src/
   - src/config/clients.ts
+  - src/config/fileConfig.ts
   - src/config/instances.ts
   - src/guardian/errorMap.ts
   - src/guardian/guardian.ts
   - src/proxmox/client.ts
   - src/server/mcpServer.ts
   - src/server/policy.ts
+  - src/server/prompts.ts
   - src/server/toolRegistry.ts
   - src/ssh/nodeRouter.ts
   - src/tools/catalog.ts
   - tests/
+  - tests/unit/prompts.test.ts
   - tests/unit/retry-policy.test.ts
+  - tests/unit/setupWizard.test.ts
   - vitest.config.ts
   - vitest.e2e.config.ts
 
@@ -246,6 +264,37 @@ code_refs:
   - SSH_SETUP.md
   - docs/THREAT_MODEL.md
 
+### docs/EMPEZAR.md
+title: Empezar de cero
+headings:
+  - H1: Empezar de cero
+  - H2: Qué es esto, en tres oraciones
+  - H2: Antes de empezar
+  - H2: Paso 1 — Crear el token en Proxmox
+  - H3: Por qué el bloque dice `--privsep 0`
+  - H3: Si preferís hacerlo a mano
+  - H2: Paso 2 — Conectar
+  - H3: «¿Cuánto puede hacer la IA?»
+  - H3: «¿Necesitás ejecutar comandos adentro de los contenedores?»
+  - H3: Qué escribe
+  - H2: Paso 3 — Comprobar que anda
+  - H2: Los dos caminos de instalación
+  - H2: Cuando algo falla
+  - H2: Preguntas que hace todo el mundo
+  - H2: Una advertencia que conviene leer
+  - H2: Seguir leyendo
+code_refs:
+  - .gitignore
+  - .mcp.json
+  - .nandi-proxmox-mcp/
+  - .vscode/mcp.json
+  - /
+  - CLAUDE_CODE_SETUP.md
+  - PERMISSIONS.md
+  - THREAT_MODEL.md
+  - TOOLS.md
+  - TROUBLESHOOTING.md
+
 ### docs/FAQ.md
 title: FAQ
 headings:
@@ -255,6 +304,7 @@ headings:
   - H2: Is Windows the only platform?
   - H2: Where are secrets stored?
   - H2: Is HTTP transport supported?
+  - H2: I have never used an MCP before. Where do I start?
 code_refs: []
 
 ### docs/INSTALL_WINDOWS.md
@@ -317,13 +367,18 @@ title: Proxmox Setup (API Token + ACL)
 headings:
   - H1: Proxmox Setup (API Token + ACL)
   - H2: Important
-  - H2: Create API token
+  - H2: The short way
+  - H2: Create API token by hand
+  - H3: Privilege separation is the one to get right
+  - H3: The Token ID is case-sensitive
   - H2: Assign minimum ACL
   - H2: 403 ACL runbook
   - H3: Symptom
   - H3: Cause
   - H3: Fix
-code_refs: []
+code_refs:
+  - /
+  - /vms/101
 
 ### docs/QUICKSTART.md
 title: Quickstart
@@ -338,6 +393,7 @@ headings:
 code_refs:
   - .nandi-proxmox-mcp/config.json
   - .vscode/mcp.json
+  - EMPEZAR.md
   - PROXMOX_SETUP.md
   - SSH_SETUP.md
   - VSCODE_SETUP.md
@@ -430,12 +486,14 @@ code_refs:
 title: SSH Setup (Windows)
 headings:
   - H1: SSH Setup (Windows)
+  - H2: 0. Let the tool do both steps
   - H2: 1. Generate key
   - H2: 2. Copy public key to Proxmox host
   - H2: 3. Validate interactive SSH
   - H2: 4. Validate non-interactive batch SSH (required)
 code_refs:
   - .pub
+  - /root/.ssh/authorized_keys
 
 ### docs/THREAT_MODEL.md
 title: Threat Model
@@ -529,6 +587,17 @@ code_refs:
   - NANDI-Services/nandi-plugins-marketplace
   - plugins/nandi-proxmox-mcp/.mcp.json
   - plugins/nandi-proxmox-mcp/plugin.json
+
+### marketplace/agent-plugin-marketplace/plugins/nandi-proxmox-mcp/commands/setup.md
+title: (untitled)
+headings:
+  - H2: 1. Find out where they are
+  - H2: 2. Get an API token
+  - H2: 3. Run setup
+  - H2: 4. Check it
+  - H2: 5. Prove it works
+  - H2: Ground rules
+code_refs: []
 
 ### marketplace/listing.md
 title: nandi-proxmox-mcp Marketplace Listing
