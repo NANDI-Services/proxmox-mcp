@@ -1,3 +1,4 @@
+import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   clientAdapters,
@@ -16,12 +17,25 @@ describe("client adapters", () => {
     expect(clientAdapters.vscode.rootKey).toBe("servers");
   });
 
+  // `targetPath` resolves against the given root, and `resolve` reads "C:/proj"
+  // as absolute on Windows but relative on Linux -- where it silently prefixes
+  // the process cwd. Asserting the full absolute path therefore checked a
+  // different thing on each OS: green locally, red on the CI runner.
+  //
+  // What the adapter actually promises is where the file sits *relative to the
+  // project root*, so assert that. It still fails if either adapter starts
+  // writing to the other's location.
+  const placedAt = (adapter: (typeof clientAdapters)[keyof typeof clientAdapters]): string => {
+    const root = resolve("proj");
+    return relative(root, adapter.targetPath(root)).replace(/\\/g, "/");
+  };
+
   it("targets .mcp.json for Claude Code", () => {
-    expect(clientAdapters["claude-code"].targetPath("C:/proj").replace(/\\/g, "/")).toBe("C:/proj/.mcp.json");
+    expect(placedAt(clientAdapters["claude-code"])).toBe(".mcp.json");
   });
 
   it("targets .vscode/mcp.json for VS Code", () => {
-    expect(clientAdapters.vscode.targetPath("C:/proj").replace(/\\/g, "/")).toBe("C:/proj/.vscode/mcp.json");
+    expect(placedAt(clientAdapters.vscode)).toBe(".vscode/mcp.json");
   });
 
   describe("parseClientIds", () => {
