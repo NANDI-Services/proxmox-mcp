@@ -1,26 +1,8 @@
 <!-- doc-governance:map v1 -->
-sealed_sha: b63463a721a4654ccace54ca515a2a6e0327b450
-sealed_at: 2026-08-12T21:03:35.913Z
+sealed_sha: 41050a2892a8d7e2927a5a6008a42dc105d398b7
+sealed_at: 2026-08-12T21:06:09.262Z
 tool_version: 0.9.5
-sealed_dirty:
-  - f0709425a8bf3980258dbf820df700975932d4ab graphify-out/.graphify_labels.json
-  - 3cedd86a96389c3886cb528143a19fed33aecea8 graphify-out/.graphify_labels.json.sig
-  - 945c9b46d684f08ec84cb316e1dc0061e361f794 graphify-out/.graphify_root
-  - 5e1d0e6965377eb9d3bff99c0e6ee8da51cd0597 graphify-out/GRAPH_REPORT.md
-  - 2dc79c38790d7f66c0f9e9f8e620613a354acbc3 graphify-out/cache/ast/v0.9.28/2904574bdd1dbab3eaac300ed99b4858b6a22e8699e7f9641b5680fbb152204d.json
-  - 98b871788f4114037d9e89c807eceaab13ad5a5e graphify-out/cache/ast/v0.9.28/31e299b2d9e150878db36b8a226e1f3b69b7bb1f6e57eeb09cf19d429254e8a3.json
-  - c995e118fbe36888f677c4f82c2d9ba42e701f7b graphify-out/cache/ast/v0.9.28/47529530caa443f9d92a685d4002db3426f4e1e9282c5fc1e2e6dfa0dd5365c3.json
-  - a3736a361e94113a3ab8aab8695050f70fb462f2 graphify-out/cache/ast/v0.9.28/4ec6eb5f3aededede0cf29046f53fc3d5e22ab42500cd7cd24f4461d0943c5e4.json
-  - 3184a99edbc7964e12f61bfd6fb4869db9573928 graphify-out/cache/ast/v0.9.28/7c4a7ff53d2a314510d4c19d58c5692a9ec44e9bfedaeaf569ae4ea7c721a4a1.json
-  - c2ebe047c4ea4c1c43243d474bd1762ba67a6d7d graphify-out/cache/ast/v0.9.28/8114b3acbe164cccfb54235f59e53684ed089ba834bae6d1c7774f7479d4a87b.json
-  - f1394988c691b2548db015bf163ec2d16e6b539b graphify-out/cache/ast/v0.9.28/d32f5f0e26b8b425507d5d0b8f5e8c624c331f016b88f857509fbfd870fb50b1.json
-  - 91a85bb3f588b70d333485d05eb0ab9586d64831 graphify-out/cache/ast/v0.9.28/dad89c4bd37dd380f50cbb1c9538cb272723f26a4ec07d7ceb375a31de1e6061.json
-  - f9bffabbdee3b8f29072c8930958911e47e4e7ed graphify-out/cache/ast/v0.9.28/dde86906ff0b7fdc39b7cf96b6223d722a6160a21530fe156b90336c8843b6c5.json
-  - 62ae86ed81c3d44a608673cf7fcd5055d9bb6694 graphify-out/cache/ast/v0.9.28/e12e5f6dce8d6a45a58383eb10b34e830f4af81dfaf718878b7fe427e2d3ec63.json
-  - db36e177f0eb2489930781b8ea98d0b874f064b8 graphify-out/cache/stat-index.json
-  - 4d08976a6ba55345a489b454966303283da8401a graphify-out/graph.html
-  - 798f8d1580fbc93552bafa6d49d3142a5920bd27 graphify-out/graph.json
-  - 6faf03bfaa4a55bb039a2ba707a06651c7e34216 graphify-out/manifest.json
+sealed_dirty: []
 
 ## Inventory
 
