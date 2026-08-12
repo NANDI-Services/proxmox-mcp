@@ -15,7 +15,8 @@ describe("proxmox helpers", () => {
       sshHost: "pve.local",
       sshPort: 22,
       sshUser: "root",
-      sshKeyPath: "C:/id_ed25519"
+      sshKeyPath: "C:/id_ed25519",
+      sshStrategy: "auto"
     });
 
     expect(header).toContain("PVEAPIToken=");

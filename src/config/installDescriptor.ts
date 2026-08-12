@@ -36,6 +36,39 @@ export const buildWorkspaceMcpConfig = (configPath: string): McpConfigFile => ({
   }
 });
 
+export type PolicyEnvOptions = {
+  accessTier?: string;
+  moduleMode?: string;
+};
+
+/**
+ * Builds the server entry written into a client's MCP config.
+ *
+ * PVE_ACCESS_TIER and PVE_MODULE_MODE are read from the environment at
+ * registration time and are not part of the JSON runtime config, so emitting
+ * them here is the only way a generated config can pin the tool surface.
+ * The access tier defaults to `full` inside the server, which is why setup
+ * writes it explicitly rather than leaving it implicit.
+ */
+export const buildServerEntry = (configPath: string, policy: PolicyEnvOptions = {}): McpServerEntry => {
+  const env: Record<string, string> = {
+    NANDI_PROXMOX_CONFIG: configPath
+  };
+
+  if (policy.accessTier) {
+    env.PVE_ACCESS_TIER = policy.accessTier;
+  }
+  if (policy.moduleMode) {
+    env.PVE_MODULE_MODE = policy.moduleMode;
+  }
+
+  return {
+    command: "npx",
+    args: [serverId, "run"],
+    env
+  };
+};
+
 export const normalizeMcpConfigDocument = (raw: string): {
   normalized: McpConfigFile;
   migratedLegacy: boolean;
@@ -73,39 +106,82 @@ export const normalizeMcpConfigDocument = (raw: string): {
   throw new Error("Invalid MCP config JSON structure. Expected `servers` at root.");
 };
 
-export const validateMcpConfig = (value: unknown): { ok: boolean; errors: string[] } => {
+export type McpConfigRootKey = "servers" | "mcpServers";
+
+export type ValidateMcpConfigOptions = {
+  /** `servers` for VS Code, `mcpServers` for Claude Code. */
+  rootKey?: McpConfigRootKey;
+  /**
+   * When true (the default, used for configs this tool generates) the launcher
+   * must be exactly `npx nandi-proxmox-mcp run`. Reading a user's existing file
+   * should pass false: `node dist/...`, `docker run` and `pnpm dlx` are all
+   * legitimate ways to launch the server, and rejecting them would make
+   * `doctor` fail on a perfectly working setup.
+   */
+  strictLauncher?: boolean;
+  /** Which server key to validate. Defaults to the single-instance name. */
+  serverKey?: string;
+};
+
+export const validateMcpConfig = (
+  value: unknown,
+  options: ValidateMcpConfigOptions = {}
+): { ok: boolean; errors: string[]; warnings: string[] } => {
+  const rootKey = options.rootKey ?? "servers";
+  const strictLauncher = options.strictLauncher ?? true;
+  const key = options.serverKey ?? serverId;
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   if (typeof value !== "object" || value === null) {
-    return { ok: false, errors: ["MCP config must be a JSON object."] };
+    return { ok: false, errors: ["MCP config must be a JSON object."], warnings };
   }
 
-  if (!("servers" in value) || typeof (value as { servers?: unknown }).servers !== "object" || (value as { servers?: unknown }).servers === null) {
-    errors.push("Missing `servers` object in MCP config root.");
-    return { ok: false, errors };
+  const root = (value as Record<string, unknown>)[rootKey];
+  if (typeof root !== "object" || root === null) {
+    errors.push(`Missing \`${rootKey}\` object in MCP config root.`);
+    return { ok: false, errors, warnings };
   }
 
-  const servers = (value as { servers: Record<string, unknown> }).servers;
-  const nandi = servers[serverId];
+  const servers = root as Record<string, unknown>;
+  const nandi = servers[key];
   if (!nandi || typeof nandi !== "object") {
-    errors.push(`Missing '${serverId}' server entry under servers.`);
-    return { ok: false, errors };
+    errors.push(`Missing '${key}' server entry under ${rootKey}.`);
+    return { ok: false, errors, warnings };
   }
 
   const entry = nandi as Partial<McpServerEntry>;
-  if (entry.command !== "npx") {
-    errors.push("Server command should be `npx`.");
+
+  if (typeof entry.command !== "string" || entry.command.length === 0) {
+    errors.push("Server `command` must be a non-empty string.");
+  } else if (entry.command !== "npx") {
+    const message = "Server command is not `npx`.";
+    if (strictLauncher) {
+      errors.push(message);
+    } else {
+      warnings.push(`${message} That is supported, but not the documented default.`);
+    }
   }
-  if (!Array.isArray(entry.args) || entry.args[0] !== serverId || entry.args[1] !== "run") {
-    errors.push("Server args should be ['nandi-proxmox-mcp','run'].");
+
+  if (!Array.isArray(entry.args)) {
+    errors.push("Server `args` must be an array.");
+  } else if (entry.args[0] !== serverId || entry.args[1] !== "run") {
+    const message = "Server args are not ['nandi-proxmox-mcp','run'].";
+    if (strictLauncher) {
+      errors.push(message);
+    } else {
+      warnings.push(`${message} That is supported, but not the documented default.`);
+    }
   }
+
   if (!entry.env || typeof entry.env.NANDI_PROXMOX_CONFIG !== "string" || entry.env.NANDI_PROXMOX_CONFIG.length < 3) {
     errors.push("env.NANDI_PROXMOX_CONFIG is required and must be a valid path string.");
   }
 
   return {
     ok: errors.length === 0,
-    errors
+    errors,
+    warnings
   };
 };
 

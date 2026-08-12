@@ -100,12 +100,30 @@ The config loader now rejects:
 
 ## Quick start
 
-Guided setup:
+Guided setup. By default this writes config for **Claude Code** (`.mcp.json`)
+and **VS Code** (`.vscode/mcp.json`), merging into either file if it already
+exists:
 
 ```powershell
-npx nandi-proxmox-mcp setup
+npx nandi-proxmox-mcp setup --access-tier read-only
 npx nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
+
+Start with `--access-tier read-only`. The server's built-in default is `full`,
+which exposes every destructive tool including arbitrary command execution;
+passing the flag writes the tier explicitly into the client config so the
+choice is visible rather than implicit. Raise it once you trust the setup.
+
+Pick specific clients, or print a block for any other MCP client:
+
+```powershell
+npx nandi-proxmox-mcp setup --clients claude-code
+npx nandi-proxmox-mcp setup --print-config          # writes nothing, safe to pipe
+```
+
+`.mcp.json` holds only a config path and policy settings, so it is safe to
+commit and share. Your API token stays in `.nandi-proxmox-mcp/config.json`,
+which is gitignored.
 
 Direct run with environment variables:
 
@@ -163,7 +181,19 @@ Users are responsible for:
 
 ## HTTP hardening
 
-When `MCP_TRANSPORT=http` is enabled, the server now applies:
+> **The HTTP transport performs no authentication.** There is no bearer token,
+> API key, or client-certificate check on `POST /mcp`; the controls below are
+> network-level only. `MCP_HOST` also defaults to `0.0.0.0`, and the host
+> allowlist includes your configured Proxmox and SSH hosts. Anyone who can
+> reach the port and send a matching `Host` header gets the full registered
+> tool surface — which, with the default `PVE_ACCESS_TIER=full`, includes
+> destructive tools and arbitrary command execution.
+>
+> Only enable `MCP_TRANSPORT=http` on a trusted network, behind an
+> authenticating reverse proxy, or bound to `127.0.0.1` via `MCP_HOST`. The
+> default stdio transport is not affected: it has no network surface.
+
+When `MCP_TRANSPORT=http` is enabled, the server applies:
 
 - host allowlist enforcement, including wildcard-bind protection
 - origin validation for requests that send an `Origin` header
@@ -239,7 +269,12 @@ npm pack --dry-run
 
 ## Documentation Maintenance Policy
 
-This repository enforces a pre-commit documentation sync gate.
+This repository follows a documentation sync policy, enforced in review rather than by a git hook.
+
+> There is no pre-commit hook. The one gate that *is* automated is in CI
+> (`.github/workflows/ci.yml`): it regenerates `docs/TOOLS.md` and fails the
+> build on any drift. Note also that a repo-local `.git/hooks/pre-commit` would
+> not run on a machine where `core.hooksPath` is redirected, which is common.
 
 - Before closing a `change`, `fix`, or `refactor`, evaluate whether `README.md`, `AGENTS.md`, and `CONTRIBUTING.md` must be updated.
 - If a document is relevant to the behavioral or process impact, it must be updated in the same change set.

@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ProxmoxClient } from "../proxmox/client.js";
+import { NodeRouter } from "../ssh/nodeRouter.js";
 import type { RuntimeConfig } from "../config/validate.js";
 import { toolCatalog } from "../tools/catalog.js";
 import { loadPolicySettings, PolicyEngine } from "./policy.js";
@@ -36,6 +37,10 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
     keyPath: config.sshKeyPath,
     timeoutMs: 20_000
   };
+
+  // One router per server instance so the discovered per-node route stays
+  // cached for the process lifetime instead of being probed on every call.
+  const router = new NodeRouter(proxmoxClient, config);
 
   const policy = new PolicyEngine(loadPolicySettings());
   let registered = 0;
@@ -96,7 +101,7 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
           });
         }
 
-        return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
+        return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, router, transport: options.transport }));
       }
     );
     registered += 1;
@@ -149,7 +154,7 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
             });
           }
 
-          return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
+          return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, router, transport: options.transport }));
         }
       );
       registered += 1;

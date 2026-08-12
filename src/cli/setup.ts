@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { spawnSync } from "node:child_process";
@@ -9,14 +9,29 @@ import { runtimeConfigSchema } from "../config/validate.js";
 import { printReport, type ReportItem } from "./report.js";
 import { runSshBatch } from "../ssh/sshClient.js";
 import {
-  buildWorkspaceMcpConfig,
-  normalizeMcpConfigDocument,
-  validateMcpConfig,
-  type McpConfigFile
+  buildServerEntry,
+  type McpServerEntry
 } from "../config/installDescriptor.js";
+import {
+  DEFAULT_INSTANCE_NAME,
+  instanceRef,
+  sanitizeInstanceName,
+  type InstanceScope
+} from "../config/instances.js";
+import { readClusterTopology, type ClusterTopology } from "../ssh/nodeRouter.js";
+import {
+  clientAdapters,
+  defaultClientIds,
+  mergeServerEntry,
+  parseClientIds,
+  renderGenericConfig,
+  serializeClientDocument,
+  validateForClient,
+  type ClientAdapter,
+  type ClientId,
+  type McpClientDocument
+} from "../config/clients.js";
 
-const defaultConfigDir = resolve(process.cwd(), ".nandi-proxmox-mcp");
-const defaultConfigPath = resolve(defaultConfigDir, "config.json");
 
 export type SetupOptions = {
   proxmoxHost?: string;
@@ -31,6 +46,21 @@ export type SetupOptions = {
   sshUser?: string;
   sshKeyPath?: string;
   skipConnectivity?: boolean;
+  /** Which client configs to write. Defaults to Claude Code + VS Code. */
+  clients?: string;
+  /** Emitted into the client config env block; the server defaults to `full`. */
+  accessTier?: string;
+  moduleMode?: string;
+  /** Print a paste-ready config to stdout and write nothing. */
+  printConfig?: boolean;
+  /**
+   * Instance name. One instance per Proxmox: run setup once per server and each
+   * gets its own credentials file and its own entry in the client config.
+   * Defaults to the discovered cluster or node name.
+   */
+  name?: string;
+  /** `project` writes into the current directory, `user` into the home directory. */
+  scope?: string;
 };
 
 const defaultSshKeyPath = (): string => resolve(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".ssh", "id_ed25519");
@@ -144,43 +174,76 @@ const validatePrereqs = async (): Promise<ReportItem[]> => {
   return checks;
 };
 
-const writeVscodeConfig = async (): Promise<void> => {
-  const vscodeDir = resolve(process.cwd(), ".vscode");
-  await mkdir(vscodeDir, { recursive: true });
+/** Detects the legacy `{ mcp: { servers: ... } }` nesting VS Code used to write. */
+const migrateLegacyVscodeShape = (doc: McpClientDocument): { doc: McpClientDocument; migrated: boolean } => {
+  const legacy = doc.mcp;
+  if (
+    !("servers" in doc) &&
+    typeof legacy === "object" &&
+    legacy !== null &&
+    typeof (legacy as { servers?: unknown }).servers === "object"
+  ) {
+    const { mcp: _mcp, ...rest } = doc;
+    return { doc: { ...rest, servers: (legacy as { servers: unknown }).servers }, migrated: true };
+  }
 
-  const mcpPath = resolve(vscodeDir, "mcp.json");
-  const resolvedConfigPath = resolve(process.cwd(), ".nandi-proxmox-mcp", "config.json");
+  return { doc, migrated: false };
+};
 
-  let config: McpConfigFile = buildWorkspaceMcpConfig(resolvedConfigPath);
+const writeClientConfig = async (
+  adapter: ClientAdapter,
+  cwd: string,
+  entry: McpServerEntry,
+  serverKey: string
+): Promise<{ path: string; migratedLegacy: boolean }> => {
+  const targetPath = adapter.targetPath(cwd);
+  await mkdir(dirname(targetPath), { recursive: true });
+
+  let existingRaw: string | undefined;
+  try {
+    existingRaw = await readFile(targetPath, "utf8");
+  } catch {
+    existingRaw = undefined;
+  }
+
+  let doc: McpClientDocument | undefined;
   let migratedLegacy = false;
 
-  try {
-    const existing = await readFile(mcpPath, "utf8");
-    const normalized = normalizeMcpConfigDocument(existing);
-    config = normalized.normalized;
-    migratedLegacy = normalized.migratedLegacy;
-  } catch {
-    // No previous config or invalid JSON, fall back to generated structure.
-  }
-
-  config.servers["nandi-proxmox-mcp"] = {
-    command: "npx",
-    args: ["nandi-proxmox-mcp", "run"],
-    env: {
-      NANDI_PROXMOX_CONFIG: resolvedConfigPath
+  if (existingRaw !== undefined && existingRaw.trim().length > 0) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(existingRaw);
+    } catch (error) {
+      // Never clobber a file we cannot parse: it very likely holds the user's
+      // other MCP servers.
+      throw new Error(
+        `Refusing to overwrite ${targetPath}: it exists but is not valid JSON ` +
+          `(${error instanceof Error ? error.message : "parse error"}). Fix or remove it, then re-run setup.`
+      );
     }
-  };
 
-  const validation = validateMcpConfig(config);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Refusing to overwrite ${targetPath}: expected a JSON object at the root.`);
+    }
+
+    if (adapter.rootKey === "servers") {
+      const migration = migrateLegacyVscodeShape(parsed as McpClientDocument);
+      doc = migration.doc;
+      migratedLegacy = migration.migrated;
+    } else {
+      doc = parsed as McpClientDocument;
+    }
+  }
+
+  const merged = mergeServerEntry(doc, adapter.rootKey, entry, serverKey);
+
+  const validation = validateForClient(adapter, merged, { serverKey });
   if (!validation.ok) {
-    throw new Error(`Generated MCP config failed validation: ${validation.errors.join(" | ")}`);
+    throw new Error(`Generated ${adapter.label} config failed validation: ${validation.errors.join(" | ")}`);
   }
 
-  await writeFile(mcpPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-
-  if (migratedLegacy) {
-    process.stdout.write("Migrated legacy `.vscode/mcp.json` format to root `servers` format.\n");
-  }
+  await writeFile(targetPath, serializeClientDocument(merged), "utf8");
+  return { path: targetPath, migratedLegacy };
 };
 
 const connectivityChecks = async (config: RuntimeConfig): Promise<ReportItem[]> => {
@@ -230,17 +293,235 @@ const connectivityChecks = async (config: RuntimeConfig): Promise<ReportItem[]> 
   return checks;
 };
 
+/**
+ * Turns ssh's multi-line failures into one actionable line.
+ *
+ * A changed host key prints a 15-line banner that tells a non-expert nothing
+ * about what to do; it happens whenever a node is reinstalled or its key
+ * rotates, which is common enough to be worth handling explicitly.
+ */
+export const summarizeSshFailure = (stderr: string): string => {
+  const text = stderr.trim();
+  const lower = text.toLowerCase();
+
+  if (lower.includes("host key verification failed") || lower.includes("remote host identification has changed")) {
+    return (
+      "The node's SSH host key changed since you last connected (common after a reinstall). " +
+      'Remove the stale entry with: ssh-keygen -R "<host>" (add :port if not 22), then re-run setup.'
+    );
+  }
+
+  if (lower.includes("permission denied")) {
+    return (
+      "SSH rejected the key. Make sure the public key is in /root/.ssh/authorized_keys on the node " +
+      "(in a cluster that file is shared across all nodes) and that the private key path is correct."
+    );
+  }
+
+  if (lower.includes("connection refused")) {
+    return "Nothing is listening on the SSH port. Check the host and port, and that sshd is running.";
+  }
+
+  if (lower.includes("connection timed out") || lower.includes("operation timed out")) {
+    return "SSH timed out. If the node is only reachable over a VPN, confirm the tunnel is up.";
+  }
+
+  return text.split("\n")[0] ?? "SSH command failed";
+};
+
+export type Discovery = {
+  topology?: ClusterTopology;
+  /** Which node `sshHost` is, asked of the node itself. */
+  sshNodeName?: string;
+  report: ReportItem[];
+};
+
+/**
+ * Learns the shape of the installation instead of asking the operator for it.
+ *
+ * `/cluster/status` tells us whether this is a cluster or a standalone node,
+ * what the cluster is called, and who the members are. Asking the entry node
+ * its own hostname over SSH tells us which node we are connected to, which is
+ * what lets the router skip routing for guests that already live there.
+ */
+const discoverInstallation = async (config: RuntimeConfig): Promise<Discovery> => {
+  const report: ReportItem[] = [];
+  const client = new ProxmoxClient(config);
+  let topology: ClusterTopology | undefined;
+  let sshNodeName: string | undefined;
+
+  try {
+    topology = await readClusterTopology(client);
+    report.push({
+      check: "Installation type",
+      ok: true,
+      detail: topology.isCluster
+        ? `Cluster "${topology.clusterName ?? "unnamed"}" with ${topology.nodes.length} node(s)` +
+          `${topology.quorate === false ? " - WARNING: cluster has no quorum" : ""}`
+        : "Standalone Proxmox node (not part of a cluster)"
+    });
+
+    if (topology.nodes.length > 0) {
+      report.push({
+        check: "Nodes discovered",
+        ok: true,
+        detail: topology.nodes.map((node) => `${node.name}${node.online ? "" : " (offline)"}`).join(", ")
+      });
+    }
+  } catch (error) {
+    report.push({
+      check: "Installation type",
+      ok: false,
+      detail: error instanceof Error ? error.message : "Could not read cluster status"
+    });
+  }
+
+  try {
+    // `hostname -s` gives the short name, which is what Proxmox uses as the
+    // node name. The FQDN form would not match the cluster's node list.
+    const result = await runSshBatch(
+      { host: config.sshHost, port: config.sshPort, user: config.sshUser, keyPath: config.sshKeyPath, timeoutMs: 15_000 },
+      "hostname -s"
+    );
+
+    if (result.exitCode === 0) {
+      const detected = result.stdout.trim().split(/\s+/)[0];
+      const knownNodes = topology?.nodes.map((node) => node.name) ?? [];
+
+      if (detected && (knownNodes.length === 0 || knownNodes.includes(detected))) {
+        sshNodeName = detected;
+        report.push({ check: "SSH entry node", ok: true, detail: `Connected to node "${detected}"` });
+      } else if (detected) {
+        // Never record a name the cluster does not know: a wrong value would
+        // make the router treat a remote node as local and fail confusingly.
+        report.push({
+          check: "SSH entry node",
+          ok: false,
+          detail:
+            `SSH reports hostname "${detected}", which is not one of the cluster nodes ` +
+            `(${knownNodes.join(", ")}). Check that sshHost points at a Proxmox node. ` +
+            "Node routing will fall back to address matching."
+        });
+      }
+    } else {
+      report.push({ check: "SSH entry node", ok: false, detail: summarizeSshFailure(result.stderr) });
+    }
+  } catch (error) {
+    report.push({
+      check: "SSH entry node",
+      ok: false,
+      detail: error instanceof Error ? error.message : "SSH unavailable"
+    });
+  }
+
+  // Containers on other nodes are reached either directly or by hopping from
+  // the entry node, so tell the operator which nodes are directly reachable.
+  if (topology && topology.nodes.length > 1 && sshNodeName) {
+    const others = topology.nodes.filter((node) => node.name !== sshNodeName);
+    const results = await Promise.all(
+      others.map(async (node) => {
+        const address = config.sshNodes?.[node.name]?.host ?? node.ip ?? node.name;
+        try {
+          const probe = await runSshBatch(
+            {
+              host: address,
+              port: config.sshNodes?.[node.name]?.port ?? config.sshPort,
+              user: config.sshNodes?.[node.name]?.user ?? config.sshUser,
+              keyPath: config.sshKeyPath,
+              timeoutMs: 10_000
+            },
+            "hostname"
+          );
+          return { node: node.name, direct: probe.exitCode === 0, address };
+        } catch {
+          return { node: node.name, direct: false, address };
+        }
+      })
+    );
+
+    for (const entry of results) {
+      report.push({
+        check: `Node ${entry.node}`,
+        ok: true,
+        detail: entry.direct
+          ? `Reachable directly at ${entry.address}`
+          : `Not reachable directly at ${entry.address}; commands will hop through ${sshNodeName}`
+      });
+    }
+  }
+
+  return { topology, sshNodeName, report };
+};
+
 export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
-  process.stdout.write("nandi-proxmox-mcp setup wizard\n");
+  // Validate up front so a typo fails fast on every path, including
+  // --print-config, rather than being silently ignored.
+  const selectedClients: ClientId[] = options.clients ? parseClientIds(options.clients) : defaultClientIds;
+  const scope: InstanceScope = options.scope === "user" ? "user" : "project";
+
+  // --print-config is a read-only helper: it emits a paste-ready block for any
+  // MCP client and touches nothing on disk, so it is safe to pipe.
+  if (options.printConfig) {
+    const previewName = options.name ? sanitizeInstanceName(options.name) : DEFAULT_INSTANCE_NAME;
+    const preview = instanceRef(previewName, scope, process.cwd());
+    const entry = buildServerEntry(preview.configPath, {
+      accessTier: options.accessTier,
+      moduleMode: options.moduleMode
+    });
+    process.stdout.write(renderGenericConfig(entry, preview.serverKey));
+    return;
+  }
+
+  process.stdout.write("nandi-proxmox-mcp setup\n");
   process.stdout.write("The API token is NOT provided by npm or MCP. You must create it in your own Proxmox server.\n\n");
 
   const prereq = await validatePrereqs();
   printReport("Prerequisites", prereq);
 
-  const config = hasCliOverrides(options) ? resolveSetupConfig(options) : await ask();
-  await mkdir(defaultConfigDir, { recursive: true });
-  await writeFile(defaultConfigPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  await writeVscodeConfig();
+  let config = hasCliOverrides(options) ? resolveSetupConfig(options) : await ask();
+
+  // Discovery has to happen before anything is written: it decides the default
+  // instance name and fills in which node we are connected to.
+  let discovery: Discovery = { report: [] };
+  if (!options.skipConnectivity) {
+    discovery = await discoverInstallation(config);
+    printReport("Discovered installation", discovery.report);
+
+    if (discovery.sshNodeName) {
+      config = { ...config, sshNodeName: discovery.sshNodeName };
+    }
+  }
+
+  const instanceName = options.name
+    ? sanitizeInstanceName(options.name)
+    : discovery.topology?.clusterName
+      ? sanitizeInstanceName(discovery.topology.clusterName)
+      : discovery.sshNodeName
+        ? sanitizeInstanceName(discovery.sshNodeName)
+        : DEFAULT_INSTANCE_NAME;
+
+  const instance = instanceRef(instanceName, scope, process.cwd());
+
+  await mkdir(dirname(instance.configPath), { recursive: true });
+  await writeFile(instance.configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  const entry = buildServerEntry(instance.configPath, {
+    accessTier: options.accessTier,
+    moduleMode: options.moduleMode
+  });
+
+  const clientIdsToWrite = selectedClients;
+  const written: string[] = [];
+
+  for (const clientId of clientIdsToWrite) {
+    const adapter = clientAdapters[clientId];
+    const result = await writeClientConfig(adapter, process.cwd(), entry, instance.serverKey);
+    written.push(`${adapter.label}: ${result.path}`);
+
+    if (result.migratedLegacy) {
+      process.stdout.write(`Migrated legacy \`${adapter.relativePath}\` format to root \`servers\` format.\n`);
+    }
+  }
 
   const connectivity = options.skipConnectivity
     ? [{ check: "Connectivity", ok: true, detail: "Skipped by --skip-connectivity" }]
@@ -249,9 +530,34 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
 
   const allOk = [...prereq, ...connectivity].every((item) => item.ok);
   process.stdout.write(`\nFinal status: ${allOk ? "GREEN" : "RED"}\n`);
-  process.stdout.write(`Local config created at: ${defaultConfigPath}\n`);
-  process.stdout.write("\nNext steps for VS Code/Codex:\n");
-  process.stdout.write("1. Open MCP settings and verify `nandi-proxmox-mcp` appears.\n");
-  process.stdout.write("2. If needed, use `.vscode/mcp.json` generated by setup as your custom server source.\n");
-  process.stdout.write("3. Run `nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op`.\n");
+  process.stdout.write(`\nInstance name: ${instance.name}  (tools appear with this prefix)\n`);
+  process.stdout.write(`Credentials stored at: ${instance.configPath}\n`);
+
+  process.stdout.write("\nClient configs written:\n");
+  for (const line of written) {
+    process.stdout.write(`  ${line}\n`);
+  }
+
+  for (const clientId of clientIdsToWrite) {
+    const note = clientAdapters[clientId].note;
+    if (note) {
+      process.stdout.write(`\nNote (${clientAdapters[clientId].label}): ${note}\n`);
+    }
+  }
+
+  if (!options.accessTier) {
+    process.stdout.write(
+      "\nWarning: no --access-tier given, so the server default (`full`) applies and every\n" +
+        "destructive tool is exposed. Re-run with --access-tier read-only to start restricted.\n"
+    );
+  }
+
+  process.stdout.write("\nNext steps:\n");
+  process.stdout.write("1. Restart your MCP client so it picks up the new server.\n");
+  process.stdout.write(`2. Run \`nandi-proxmox-mcp doctor --name ${instance.name}\`.\n`);
+  process.stdout.write("3. For any other client, run `nandi-proxmox-mcp setup --print-config`.\n");
+  process.stdout.write(
+    "\nHave another Proxmox? Run setup again with a different --name. Each one gets its own\n" +
+      "credentials file and its own server entry, so they stay completely separate.\n"
+  );
 };

@@ -5,7 +5,9 @@ import { ProxmoxClient } from "../proxmox/client.js";
 import { printReport, type ReportItem } from "./report.js";
 import { runSshBatch } from "../ssh/sshClient.js";
 import { pctExec } from "../ssh/pctExec.js";
-import { normalizeMcpConfigDocument, validateMcpConfig, validateMcpManifest } from "../config/installDescriptor.js";
+import { validateMcpManifest } from "../config/installDescriptor.js";
+import { clientAdapters, defaultClientIds, parseClientIds, validateForClient } from "../config/clients.js";
+import { resolveInstanceByName } from "../config/instances.js";
 
 const parseRequestedChecks = (value?: string): Set<string> => {
   if (!value) {
@@ -18,37 +20,95 @@ const parseRequestedChecks = (value?: string): Set<string> => {
 export type DoctorOptions = {
   check?: string;
   ctid?: number;
+  /** Restrict the mcp-config check to specific clients. */
+  clients?: string;
+  /** Which configured Proxmox instance to check. */
+  name?: string;
 };
 
 export const runDoctor = async (options: DoctorOptions = {}): Promise<void> => {
   const checksArg = options.check;
   const checks = parseRequestedChecks(checksArg);
   const report: ReportItem[] = [];
-  const config = await loadFileConfig();
+  // --name selects one of several configured Proxmox connections; without it we
+  // fall back to NANDI_PROXMOX_CONFIG or the default path.
+  const instance = options.name ? await resolveInstanceByName(options.name, process.cwd()) : undefined;
+  const config = await loadFileConfig(instance?.configPath);
   const client = new ProxmoxClient(config);
+
+  if (instance) {
+    report.push({ check: "instance", ok: true, detail: `${instance.name} (${instance.configPath})` });
+  }
 
   let firstNode = "";
 
   if (checks.has("mcp-config")) {
-    try {
-      const mcpPath = resolve(process.cwd(), ".vscode", "mcp.json");
-      const manifestPath = resolve(process.cwd(), "mcp-manifest.json");
-      const mcpRaw = await readFile(mcpPath, "utf8");
-      const normalized = normalizeMcpConfigDocument(mcpRaw);
-      const configValidation = validateMcpConfig(normalized.normalized);
-      if (!configValidation.ok) {
-        throw new Error(configValidation.errors.join(" | "));
+    const requestedClients = options.clients ? parseClientIds(options.clients) : defaultClientIds;
+    let found = 0;
+
+    for (const clientId of requestedClients) {
+      const adapter = clientAdapters[clientId];
+      const targetPath = adapter.targetPath(process.cwd());
+
+      let raw: string;
+      try {
+        raw = await readFile(targetPath, "utf8");
+      } catch {
+        // A client the user does not use is not an error.
+        continue;
       }
 
+      found += 1;
+
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        // Reading a user's file: accept any working launcher, warn on unusual
+        // ones rather than failing a setup that runs fine.
+        const validation = validateForClient(adapter, parsed, {
+          strictLauncher: false,
+          serverKey: instance?.serverKey
+        });
+        if (!validation.ok) {
+          throw new Error(validation.errors.join(" | "));
+        }
+
+        const detail =
+          validation.warnings.length > 0
+            ? `${adapter.relativePath} valid (${validation.warnings.join(" | ")})`
+            : `${adapter.relativePath} valid`;
+        report.push({ check: `mcpConfig:${adapter.id}`, ok: true, detail });
+      } catch (error) {
+        report.push({
+          check: `mcpConfig:${adapter.id}`,
+          ok: false,
+          detail: `${targetPath}: ${error instanceof Error ? error.message : "Unknown error"}`
+        });
+      }
+    }
+
+    if (found === 0) {
+      report.push({
+        check: "mcpConfig",
+        ok: false,
+        detail: `No client config found (looked for ${requestedClients
+          .map((id) => clientAdapters[id].relativePath)
+          .join(", ")}). Run \`nandi-proxmox-mcp setup\`.`
+      });
+    }
+
+    // The published manifest only exists inside the package itself, so its
+    // absence in a user's project is expected, not a failure.
+    const manifestPath = resolve(process.cwd(), "mcp-manifest.json");
+    try {
       const manifestRaw = await readFile(manifestPath, "utf8");
       const manifestValidation = validateMcpManifest(JSON.parse(manifestRaw) as unknown);
-      if (!manifestValidation.ok) {
-        throw new Error(`Manifest invalid: ${manifestValidation.errors.join(" | ")}`);
-      }
-
-      report.push({ check: "mcpConfig", ok: true, detail: "MCP config and manifest are valid" });
-    } catch (error) {
-      report.push({ check: "mcpConfig", ok: false, detail: error instanceof Error ? error.message : "Unknown error" });
+      report.push({
+        check: "mcpManifest",
+        ok: manifestValidation.ok,
+        detail: manifestValidation.ok ? "Manifest is valid" : manifestValidation.errors.join(" | ")
+      });
+    } catch {
+      // Not present: nothing to validate.
     }
   }
 

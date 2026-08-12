@@ -9,6 +9,7 @@ const expectedIssuesUrl = "https://github.com/NANDI-Services/proxmox-mcp/issues"
 const expectedHomepage = "https://github.com/NANDI-Services/proxmox-mcp#readme";
 const expectedMcpName = "io.github.NANDI-Services/nandi-proxmox-mcp";
 const expectedPackageName = "nandi-proxmox-mcp";
+const expectedOwner = "NANDI-Services";
 
 const readJson = async (relativePath) => {
   const absolutePath = resolve(root, relativePath);
@@ -20,6 +21,7 @@ const manifest = await readJson("mcp-manifest.json");
 const descriptor = await readJson(".mcp/server.json");
 const marketplaceDescriptor = await readJson("marketplace/mcp-registry/server.json");
 const pluginManifest = await readJson("marketplace/agent-plugin-marketplace/plugins/nandi-proxmox-mcp/plugin.json");
+const marketplaceManifest = await readJson("marketplace/agent-plugin-marketplace/.github/plugin/marketplace.json");
 const pluginMcpConfig = await readJson("marketplace/agent-plugin-marketplace/plugins/nandi-proxmox-mcp/.mcp.json");
 
 const errors = [];
@@ -57,6 +59,20 @@ expect(pluginManifest.id === expectedPackageName, `plugin id must be ${expectedP
 expect(pluginManifest.repository === expectedRepositoryUrl, `plugin repository must be ${expectedRepositoryUrl}`);
 expect(pluginManifest.homepage === expectedRepositoryUrl, `plugin homepage must be ${expectedRepositoryUrl}`);
 expect(pluginManifest.support === expectedIssuesUrl, `plugin support must be ${expectedIssuesUrl}`);
+expect(pluginManifest.publisher === expectedOwner, `plugin publisher must be ${expectedOwner}`);
+
+// The marketplace descriptor was previously unchecked, which let its support
+// URL drift to a repository that does not exist while every gate stayed green.
+expect(marketplaceManifest.marketplace?.owner === expectedOwner, `marketplace owner must be ${expectedOwner}`);
+expect(
+  marketplaceManifest.marketplace?.support === expectedIssuesUrl,
+  `marketplace support must be ${expectedIssuesUrl}`
+);
+expect(
+  Array.isArray(marketplaceManifest.plugins) &&
+    marketplaceManifest.plugins.some((entry) => entry?.id === expectedPackageName),
+  `marketplace plugins must list ${expectedPackageName}`
+);
 expect(pluginMcpConfig?.servers?.[expectedPackageName]?.command === "npx", "plugin .mcp.json command must be npx");
 
 const pluginArgs = pluginMcpConfig?.servers?.[expectedPackageName]?.args;

@@ -3,12 +3,12 @@
 This folder is a ready-to-copy scaffold for a custom plugin marketplace repository.
 
 ## How to use
-1. Create repo: `ezesc/nandi-plugins-marketplace`.
+1. Create repo: `NANDI-Services/nandi-plugins-marketplace`.
 2. Copy this folder contents to that repo root.
 3. Push to GitHub.
 4. In VS Code/Codex settings, add:
 ```json
-"chat.plugins.marketplaces": ["ezesc/nandi-plugins-marketplace"]
+"chat.plugins.marketplaces": ["NANDI-Services/nandi-plugins-marketplace"]
 ```
 5. Open `@agentPlugins` and install `NANDI Proxmox MCP`.
 

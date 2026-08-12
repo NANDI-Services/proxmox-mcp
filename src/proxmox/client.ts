@@ -3,8 +3,25 @@ import type { RuntimeConfig } from "../config/validate.js";
 import type { ProxmoxApiEnvelope, ProxmoxContainer, ProxmoxNode, ProxmoxVm } from "./types.js";
 import { buildTokenHeader } from "./auth.js";
 import { proxmoxEndpoints } from "./endpoints.js";
-import { ProxmoxHttpError } from "./errors.js";
+import { ProxmoxHttpError, ProxmoxResponseFormatError } from "./errors.js";
 import { buildEndpointRequest, type EndpointDescriptor } from "./descriptor.js";
+
+const BODY_SNIPPET_MAX_CHARS = 200;
+
+/**
+ * Collapse a non-JSON response body into a short single-line snippet so the
+ * error message stays readable when an HTML page is returned.
+ */
+const summarizeBody = (text: string): string | undefined => {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) {
+    return undefined;
+  }
+
+  return collapsed.length > BODY_SNIPPET_MAX_CHARS
+    ? `${collapsed.slice(0, BODY_SNIPPET_MAX_CHARS)}...`
+    : collapsed;
+};
 
 type Primitive = string | number | boolean;
 type RequestInitCompat = {
@@ -78,18 +95,39 @@ export class ProxmoxClient {
       });
 
       const text = await response.text();
-      const parsed = text.length > 0 ? (JSON.parse(text) as unknown) : undefined;
+
+      // Parsing must not throw before the status check: a reverse proxy or
+      // login page answering with HTML would otherwise surface as
+      // "Unexpected token '<'" instead of the actual HTTP failure.
+      let parsed: unknown;
+      let parseFailed = false;
+      if (text.length > 0) {
+        try {
+          parsed = JSON.parse(text) as unknown;
+        } catch {
+          parseFailed = true;
+        }
+      }
 
       if (!response.ok) {
-        const detail = this.extractErrorDetail(parsed);
+        const detail = parseFailed ? summarizeBody(text) : this.extractErrorDetail(parsed);
         const message = detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status}`;
-        throw new ProxmoxHttpError(response.status, message, parsed);
+        throw new ProxmoxHttpError(response.status, message, parseFailed ? text : parsed);
+      }
+
+      if (parseFailed) {
+        throw new ProxmoxResponseFormatError(
+          `Proxmox returned a non-JSON response (HTTP ${response.status}).`,
+          summarizeBody(text)
+        );
       }
 
       const envelope = parsed as ProxmoxApiEnvelope<T>;
       return envelope.data;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+      // Not `instanceof DOMException`: undici has changed the concrete abort
+      // error type across versions, but the name stays stable.
+      if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Proxmox request timed out after ${timeoutMs}ms`);
       }
 
