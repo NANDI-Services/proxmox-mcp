@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+### Fixed: the guided setup was unreachable
+
+- **`nandi-proxmox-mcp setup` with no flags never asked anything.** It exited
+  with "Non-interactive setup is missing required options" — the exact command
+  the README hands to newcomers. `hasCliOverrides` asked whether *any* option
+  was defined, and commander supplies defaults for `--proxmox-realm` and
+  `--scope`, so the answer was always yes and the interactive branch was dead
+  code. It now keys off the four options that carry connection data.
+- **The marketplace plugin installed a server that could not start.** Its
+  `.mcp.json` pointed `NANDI_PROXMOX_CONFIG` at
+  `${workspaceFolder}\.nandi-proxmox-mcp\config.json`: a VS Code variable in a
+  Claude Code file, Windows separators, and the legacy filename the
+  multi-instance layout stopped writing. It also used the `servers` root key,
+  which belongs to `.vscode/mcp.json`. `validate-package-metadata` now checks
+  the root key, rejects any path or client-specific variable in the env block,
+  and requires the plugin to declare `PVE_ACCESS_TIER=read-only`.
+- **`doctor` reported a skipped optional check as a failure.** Not passing
+  `--ctid` produced a red `pctExec` line, so a correct install looked broken.
+  Reports gained a `[SKIP]` state and a `fix:` line under each real failure.
+
+### Added: onboarding for people who have never used an MCP
+
+- **`nandi-proxmox-mcp bootstrap`.** Prints the `pveum` commands that create a
+  dedicated user, grant a role matching the chosen access tier, and issue an API
+  token — ready to paste into **Datacenter → Shell**, which needs no SSH access
+  the operator does not have yet. It contacts nothing, so the commands can be
+  read before running. `--new-ssh-key` also generates an ed25519 keypair and
+  includes the `authorized_keys` line.
+  The emitted token uses `--privsep 0` and says why: a token created through the
+  web UI form has privilege separation on and therefore no permissions at all,
+  which surfaces as a 401 indistinguishable from a wrong secret.
+- **The wizard explains before asking.** Access tier is now a question with a
+  `read-only` default rather than a warning printed after `full` was already
+  written. SSH is gated behind "do you need to run commands inside containers?",
+  and answering no skips four questions and sets `sshStrategy: "disabled"` —
+  most tools are REST and never needed it. A failed connection is retried in
+  place with the fix on screen, including the `privsep` one, instead of writing
+  a broken config and printing a red report.
+- **Prompt recipes.** The server now advertises MCP prompts — `cluster-health`,
+  `guest-inventory`, `backup-audit`, `troubleshoot-guest` — so a client offers a
+  starting point instead of a hundred tools and a blank line. Each declares the
+  tools it needs and is withheld when policy filtered them out.
+- **`docs/EMPEZAR.md`**, a step-by-step guide in Spanish for operators who know
+  Proxmox and have never configured an MCP. `PROXMOX_SETUP.md` and
+  `SSH_SETUP.md` gained the exact menu paths, the privsep explanation, and the
+  Windows key-generation trap where `-N '""'` sets a literal passphrase.
+- **The config file is discovered when `NANDI_PROXMOX_CONFIG` is unset.**
+  Previously only the legacy `config.json` name was tried, so any launcher that
+  could not hardcode an absolute path failed to start. Project scope wins over
+  user scope, and two candidates in the same scope is an error naming both
+  rather than a guess about which cluster to touch.
+
+### Corrected documentation
+
+- `FAQ.md` claimed the HTTP transport was unsupported; it is supported, and the
+  entry now also carries the warning that it performs no authentication.
+- `README.md` described setup as writing `.nandi-proxmox-mcp/config.json`, which
+  the multi-instance layout replaced with `<instance>.json`, and omitted
+  `.mcp.json` entirely.
+- `QUICKSTART.md` is PowerShell-only and now says so.
+
 ### Added: multiple Proxmox servers, and cluster-wide reach
 
 - **Named instances.** One MCP server process per Proxmox. `setup --name <name>`

@@ -19,6 +19,7 @@ import {
   type InstanceScope
 } from "../config/instances.js";
 import { readClusterTopology, type ClusterTopology } from "../ssh/nodeRouter.js";
+import { parseTier, type AccessTier } from "./bootstrap.js";
 import {
   clientAdapters,
   defaultClientIds,
@@ -65,44 +66,338 @@ export type SetupOptions = {
 
 const defaultSshKeyPath = (): string => resolve(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".ssh", "id_ed25519");
 
-const ask = async (): Promise<RuntimeConfig> => {
-  const rl = createInterface({ input, output });
-
-  const proxmoxHost = (await rl.question("Proxmox host (IP/FQDN): ")).trim();
-  const proxmoxPort = Number.parseInt((await rl.question("Proxmox port [8006]: ")).trim() || "8006", 10);
-  const proxmoxUser = (await rl.question("Proxmox user (without realm, e.g. svc_mcp): ")).trim();
-  const proxmoxRealm = (await rl.question("Proxmox realm [pve]: ")).trim() || "pve";
-  const tokenName = (await rl.question("API token name (e.g. nandi-mcp): ")).trim();
-  const tokenSecret = (await rl.question("API token secret: ")).trim();
-  const allowInsecureTls = ((await rl.question("Allow insecure TLS for self-signed cert? [no]: ")).trim() || "no")
-    .toLowerCase()
-    .startsWith("y");
-  const sshHost = (await rl.question("SSH host [same as Proxmox host]: ")).trim() || proxmoxHost;
-  const sshPort = Number.parseInt((await rl.question("SSH port [22]: ")).trim() || "22", 10);
-  const sshUser = (await rl.question("SSH user [root]: ")).trim() || "root";
-  const sshKeyPath =
-    (await rl.question("SSH private key path [~/.ssh/id_ed25519]: ")).trim() ||
-    defaultSshKeyPath();
-
-  rl.close();
-
-  return runtimeConfigSchema.parse({
-    proxmoxHost,
-    proxmoxPort,
-    proxmoxUser,
-    proxmoxRealm,
-    tokenName,
-    tokenSecret,
-    allowInsecureTls,
-    sshHost,
-    sshPort,
-    sshUser,
-    sshKeyPath
-  });
+/**
+ * The slice of readline the wizard uses.
+ *
+ * Declared as an interface rather than taken from `createInterface` so the flow
+ * can be driven by a test. Piping a file into the real interface does not work:
+ * readline flushes every line at once and the ones that arrive between two
+ * questions are dropped, after which the process exits cleanly having answered
+ * nothing -- which looks exactly like a hang that isn't one.
+ */
+export type Prompt = {
+  question: (text: string) => Promise<string>;
+  close: () => void;
 };
 
-const hasCliOverrides = (options: SetupOptions): boolean =>
-  Object.entries(options).some(([key, value]) => key !== "skipConnectivity" && value !== undefined);
+/** Asks, explains first, and keeps asking until the answer is usable. */
+const askText = async (
+  rl: Prompt,
+  options: { question: string; help?: string; fallback?: string; validate?: (value: string) => string | undefined }
+): Promise<string> => {
+  if (options.help) {
+    output.write(`\n  ${options.help}\n`);
+  }
+
+  for (;;) {
+    const suffix = options.fallback ? ` [${options.fallback}]` : "";
+    const raw = (await rl.question(`  ${options.question}${suffix}: `)).trim();
+    const value = raw.length > 0 ? raw : (options.fallback ?? "");
+
+    if (value.length === 0) {
+      output.write("  This one is required.\n");
+      continue;
+    }
+
+    const problem = options.validate?.(value);
+    if (problem) {
+      output.write(`  ${problem}\n`);
+      continue;
+    }
+
+    return value;
+  }
+};
+
+const askYesNo = async (rl: Prompt, question: string, fallback: boolean, help?: string): Promise<boolean> => {
+  if (help) {
+    output.write(`\n  ${help}\n`);
+  }
+
+  for (;;) {
+    const raw = (await rl.question(`  ${question} [${fallback ? "Y/n" : "y/N"}]: `)).trim().toLowerCase();
+    if (raw.length === 0) {
+      return fallback;
+    }
+    if (raw.startsWith("y") || raw === "s" || raw.startsWith("si") || raw.startsWith("sí")) {
+      return true;
+    }
+    if (raw.startsWith("n")) {
+      return false;
+    }
+    output.write("  Answer y or n.\n");
+  }
+};
+
+const askChoice = async <T extends string>(
+  rl: Prompt,
+  question: string,
+  choices: { value: T; label: string }[],
+  fallback: T
+): Promise<T> => {
+  output.write(`\n  ${question}\n`);
+  for (const [index, choice] of choices.entries()) {
+    output.write(`    ${index + 1}) ${choice.value}${choice.value === fallback ? "  (default)" : ""} - ${choice.label}\n`);
+  }
+
+  for (;;) {
+    const raw = (await rl.question(`  Choose 1-${choices.length} [${fallback}]: `)).trim().toLowerCase();
+    if (raw.length === 0) {
+      return fallback;
+    }
+
+    const byIndex = choices[Number.parseInt(raw, 10) - 1];
+    if (byIndex) {
+      return byIndex.value;
+    }
+
+    const byName = choices.find((choice) => choice.value === raw);
+    if (byName) {
+      return byName.value;
+    }
+
+    output.write(`  Pick a number from 1 to ${choices.length}.\n`);
+  }
+};
+
+const parsePort = (value: string): number | undefined => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? parsed : undefined;
+};
+
+export type WizardResult = {
+  config: RuntimeConfig;
+  accessTier: AccessTier;
+};
+
+/**
+ * The guided path.
+ *
+ * Rewritten around one observation: the hard part of this setup is not typing
+ * the answers, it is knowing what the questions mean and what to do when the
+ * answer is rejected. So every question carries one line of context, the two
+ * decisions with real consequences (how much power to grant, and whether SSH is
+ * needed at all) are asked explicitly instead of defaulted silently, and a
+ * failed connection is retried in place with the fix on screen rather than
+ * printed as a red report after everything has already been written.
+ */
+export type WizardDeps = {
+  prompt?: Prompt;
+  /** Returns the number of nodes Proxmox reports, or throws. Injectable for tests. */
+  probe?: (config: RuntimeConfig) => Promise<number>;
+};
+
+export const ask = async (options: SetupOptions, deps: WizardDeps = {}): Promise<WizardResult> => {
+  const rl = deps.prompt ?? createInterface({ input, output });
+  const probe = deps.probe ?? (async (config: RuntimeConfig) => (await new ProxmoxClient(config).listNodes()).length);
+
+  try {
+    output.write("\nThis takes about two minutes. Nothing is written until the end.\n");
+
+    // 1. The credential, which lives outside this machine and is where most
+    //    people stop.
+    const hasToken = await askYesNo(
+      rl,
+      "Do you already have a Proxmox API token?",
+      true,
+      "The token is created inside Proxmox itself; npm cannot give you one."
+    );
+
+    if (!hasToken) {
+      output.write(
+        "\n  No problem. Open your Proxmox web UI, go to Datacenter -> Shell, and paste the\n" +
+          "  block that `npx nandi-proxmox-mcp bootstrap` prints. It creates a dedicated user,\n" +
+          "  grants it permissions and prints the token. Then run this setup again.\n\n"
+      );
+      rl.close();
+      process.exitCode = 1;
+      throw new Error("Setup needs an API token. Run `npx nandi-proxmox-mcp bootstrap` first.");
+    }
+
+    // 2. How much power to hand over. Asked first and defaulted to the safest
+    //    option, because the server's own default is `full`.
+    const accessTier =
+      options.accessTier !== undefined
+        ? parseTier(options.accessTier)
+        : await askChoice<AccessTier>(
+            rl,
+            "How much should the AI be allowed to do?",
+            [
+              { value: "read-only", label: "look at everything, change nothing" },
+              { value: "read-execute", label: "also start, stop and reboot guests" },
+              { value: "full", label: "also create, delete and run commands inside containers" }
+            ],
+            "read-only"
+          );
+
+    // 3. Where Proxmox is.
+    output.write("\nConnection\n");
+    const proxmoxHost = await askText(rl, {
+      question: "Proxmox address (IP or hostname)",
+      help: "The same address you type in the browser, without https:// and without the port."
+    });
+    const proxmoxPort =
+      parsePort(
+        await askText(rl, { question: "Port", fallback: "8006", validate: (value) => (parsePort(value) ? undefined : "Not a valid port.") })
+      ) ?? 8006;
+
+    output.write("\nCredentials\n");
+    const proxmoxUser = await askText(rl, {
+      question: "User the token belongs to, without the realm",
+      fallback: "mcp",
+      help: "If you used `bootstrap`, this is `mcp`."
+    });
+    const proxmoxRealm = await askText(rl, {
+      question: "Realm",
+      fallback: "pve",
+      help: "`pve` for users created inside Proxmox, `pam` for Linux system users like root."
+    });
+    const tokenName = await askText(rl, {
+      question: "Token name",
+      fallback: "nandi",
+      help: "The short name shown in the token list, not the secret."
+    });
+    const tokenSecret = await askText(rl, {
+      question: "Token secret",
+      help: "The long UUID Proxmox showed once when the token was created.",
+      validate: (value) => (value.length >= 10 ? undefined : "That looks too short to be the secret.")
+    });
+
+    const allowInsecureTls = await askYesNo(
+      rl,
+      "Accept a self-signed certificate?",
+      false,
+      "Proxmox self-signs by default. Answering yes disables certificate checking for this connection,\n  which is fine on a trusted network and wrong over the open internet."
+    );
+
+    // 4. SSH, gated. Most tools are REST and need none of this; making everyone
+    //    solve the hardest prerequisite to use the easy 90% was the single
+    //    biggest unnecessary blocker in the old flow.
+    const wantsSsh = await askYesNo(
+      rl,
+      "Do you need to run commands inside containers?",
+      false,
+      "Only a handful of tools need SSH (`pct exec` and the Docker helpers). Everything else --\n  inventory, status, start/stop, backups, storage, networking -- works over the API without it."
+    );
+
+    let sshHost = proxmoxHost;
+    let sshPort = 22;
+    let sshUser = "root";
+    let sshKeyPath = defaultSshKeyPath();
+
+    if (wantsSsh) {
+      output.write("\nSSH\n");
+      sshHost = await askText(rl, {
+        question: "SSH address",
+        fallback: proxmoxHost,
+        help: "Usually the same node. In a cluster, any member: the server finds the rest by itself."
+      });
+      sshPort =
+        parsePort(
+          await askText(rl, { question: "SSH port", fallback: "22", validate: (value) => (parsePort(value) ? undefined : "Not a valid port.") })
+        ) ?? 22;
+      sshUser = await askText(rl, { question: "SSH user", fallback: "root" });
+      sshKeyPath = await askText(rl, {
+        question: "Private key path",
+        fallback: defaultSshKeyPath(),
+        help: "The private half stays here and is never sent anywhere. Only its .pub goes on the node."
+      });
+    }
+
+    const config = runtimeConfigSchema.parse({
+      proxmoxHost,
+      proxmoxPort,
+      proxmoxUser,
+      proxmoxRealm,
+      tokenName,
+      tokenSecret,
+      allowInsecureTls,
+      // The schema requires these even when unused, so they are filled with
+      // harmless values; `sshStrategy: "disabled"` is what actually stops the
+      // SSH tools from being reachable.
+      sshHost,
+      sshPort,
+      sshUser,
+      sshKeyPath,
+      sshStrategy: wantsSsh ? "auto" : "disabled"
+    });
+
+    // 5. Prove it works before writing anything, and let them fix it here.
+    const verified = await verifyInteractively(rl, config, probe);
+    rl.close();
+
+    return { config: verified, accessTier };
+  } catch (error) {
+    rl.close();
+    throw error;
+  }
+};
+
+/**
+ * Tests the credentials and, on failure, offers to correct them on the spot.
+ *
+ * The old flow wrote every file and then printed a red report, leaving a broken
+ * config on disk and no indication of which answer was wrong.
+ */
+const verifyInteractively = async (
+  rl: Prompt,
+  initial: RuntimeConfig,
+  probe: (config: RuntimeConfig) => Promise<number>
+): Promise<RuntimeConfig> => {
+  let config = initial;
+  const account = `${config.proxmoxUser}@${config.proxmoxRealm}`;
+
+  for (;;) {
+    output.write("\n  Checking the connection...\n");
+
+    try {
+      const nodes = await probe(config);
+      output.write(`  Connected. Proxmox reports ${nodes} node(s).\n`);
+      return config;
+    } catch (error) {
+      output.write(`\n  Could not connect.\n  ${summarizeProxmoxFailure(error, account, config.tokenName)}\n`);
+
+      const next = await askChoice(
+        rl,
+        "What now?",
+        [
+          { value: "retry", label: "I fixed it on the Proxmox side, try again" },
+          { value: "edit", label: "Re-enter the secret" },
+          { value: "save", label: "Save anyway and sort it out later" }
+        ],
+        "retry"
+      );
+
+      if (next === "save") {
+        return config;
+      }
+
+      if (next === "edit") {
+        const tokenSecret = await askText(rl, {
+          question: "Token secret",
+          validate: (value) => (value.length >= 10 ? undefined : "That looks too short to be the secret.")
+        });
+        config = { ...config, tokenSecret };
+      }
+    }
+  }
+};
+
+/**
+ * Whether the caller supplied connection details, i.e. wants the scripted path.
+ *
+ * This used to ask whether *any* option was defined, which silently disabled
+ * the interactive wizard entirely: commander fills in defaults for
+ * `--proxmox-realm` and `--scope`, so the answer was always yes and a bare
+ * `nandi-proxmox-mcp setup` -- the command the docs hand to newcomers -- failed
+ * with "missing required options" instead of asking anything.
+ *
+ * Only the four values that carry actual connection data can imply that intent.
+ */
+export const hasCliOverrides = (options: SetupOptions): boolean =>
+  [options.proxmoxHost, options.proxmoxUser, options.tokenName, options.tokenSecret].some(
+    (value) => value !== undefined
+  );
 
 export const resolveSetupConfig = (options: SetupOptions): RuntimeConfig => {
   const proxmoxHost = options.proxmoxHost?.trim();
@@ -265,6 +560,18 @@ const connectivityChecks = async (config: RuntimeConfig): Promise<ReportItem[]> 
     });
   }
 
+  if (config.sshStrategy === "disabled") {
+    // Asked for and declined. Probing anyway would print a failure for a
+    // capability the operator deliberately turned off.
+    checks.push({
+      check: "SSH batch (non-interactive)",
+      ok: true,
+      skipped: true,
+      detail: "Turned off. Only the API tools are registered."
+    });
+    return checks;
+  }
+
   try {
     const ssh = await runSshBatch(
       {
@@ -277,16 +584,19 @@ const connectivityChecks = async (config: RuntimeConfig): Promise<ReportItem[]> 
       "echo ssh-batch-ok"
     );
 
+    const ok = ssh.exitCode === 0 && ssh.stdout.includes("ssh-batch-ok");
     checks.push({
       check: "SSH batch (non-interactive)",
-      ok: ssh.exitCode === 0 && ssh.stdout.includes("ssh-batch-ok"),
-      detail: ssh.exitCode === 0 ? "Batch SSH command succeeded" : ssh.stderr.trim()
+      ok,
+      detail: ok ? "Batch SSH command succeeded" : "Non-interactive SSH failed",
+      fix: ok ? undefined : summarizeSshFailure(ssh.stderr)
     });
   } catch (error) {
     checks.push({
       check: "SSH batch (non-interactive)",
       ok: false,
-      detail: error instanceof Error ? error.message : "Unknown SSH batch error"
+      detail: error instanceof Error ? error.message : "Unknown SSH batch error",
+      fix: "SSH is only needed for container command execution; re-run setup and answer no to turn it off."
     });
   }
 
@@ -327,6 +637,55 @@ export const summarizeSshFailure = (stderr: string): string => {
   }
 
   return text.split("\n")[0] ?? "SSH command failed";
+};
+
+/**
+ * The API-side twin of `summarizeSshFailure`.
+ *
+ * The 401 case is the one that matters. Proxmox returns it both for a wrong
+ * secret and for a token created with privilege separation left on -- the web
+ * UI's default -- and those need opposite fixes. A token with `privsep 1`
+ * starts with no permissions at all, so a perfectly correct user, role and
+ * secret still fails, and the operator reasonably concludes they mistyped the
+ * secret and retypes it forever.
+ */
+export const summarizeProxmoxFailure = (error: unknown, account: string, tokenName: string): string => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const code = typeof (error as { code?: unknown })?.code === "string" ? (error as { code: string }).code : "";
+
+  if (message.includes("401") || code === "PROXMOX_AUTH_FAILED") {
+    return (
+      "Proxmox rejected the credentials. Two different causes look identical here: " +
+      "the secret is wrong, or the token was created with privilege separation on (the web UI default), " +
+      `which gives it no permissions at all. Rule the second one out with: pveum user token modify ${account} ${tokenName} --privsep 0`
+    );
+  }
+
+  if (message.includes("403") || code === "PROXMOX_ACL_FORBIDDEN") {
+    return `The token authenticated but lacks permissions. Grant them with: pveum acl modify / --users ${account} --roles PVEAuditor`;
+  }
+
+  if (code === "TLS_ERROR" || message.includes("self-signed") || message.includes("certificate")) {
+    return "Proxmox self-signs its certificate by default. Answer yes to the insecure-TLS question, or install the cluster CA on this machine.";
+  }
+
+  if (code === "DNS_RESOLUTION_FAILED" || message.includes("getaddrinfo")) {
+    return "That hostname does not resolve. Check the spelling, or connect the VPN if the name only exists inside it.";
+  }
+
+  if (code === "HOST_UNREACHABLE" || code === "TIMEOUT" || message.includes("timed out")) {
+    return "No route to the host. Over a VPN this almost always means the tunnel, not Proxmox.";
+  }
+
+  if (code === "CONNECTION_REFUSED" || message.includes("econnrefused")) {
+    return "The host answered but nothing is listening on that port. Proxmox uses 8006 by default.";
+  }
+
+  if (code === "PROXMOX_INVALID_RESPONSE") {
+    return "Something that is not the Proxmox API replied -- usually a reverse proxy or a login page. Check the host and port.";
+  }
+
+  return error instanceof Error ? error.message : "Unknown error contacting Proxmox";
 };
 
 export type Discovery = {
@@ -374,6 +733,12 @@ const discoverInstallation = async (config: RuntimeConfig): Promise<Discovery> =
       ok: false,
       detail: error instanceof Error ? error.message : "Could not read cluster status"
     });
+  }
+
+  if (config.sshStrategy === "disabled") {
+    // Node routing only matters for SSH-backed tools; the REST API already
+    // reaches the whole cluster from any node.
+    return { topology, report };
   }
 
   try {
@@ -478,7 +843,13 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
   const prereq = await validatePrereqs();
   printReport("Prerequisites", prereq);
 
-  let config = hasCliOverrides(options) ? resolveSetupConfig(options) : await ask();
+  const scripted = hasCliOverrides(options);
+  const wizard = scripted ? undefined : await ask(options);
+  let config = wizard?.config ?? resolveSetupConfig(options);
+
+  // The wizard asks for the tier explicitly, so it is only implicit on the
+  // scripted path.
+  const accessTier = options.accessTier ?? wizard?.accessTier;
 
   // Discovery has to happen before anything is written: it decides the default
   // instance name and fills in which node we are connected to.
@@ -506,7 +877,7 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
   await writeFile(instance.configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
   const entry = buildServerEntry(instance.configPath, {
-    accessTier: options.accessTier,
+    accessTier,
     moduleMode: options.moduleMode
   });
 
@@ -545,17 +916,27 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
     }
   }
 
-  if (!options.accessTier) {
+  // Only reachable on the scripted path now: the wizard always asks.
+  if (!accessTier) {
     process.stdout.write(
       "\nWarning: no --access-tier given, so the server default (`full`) applies and every\n" +
         "destructive tool is exposed. Re-run with --access-tier read-only to start restricted.\n"
+    );
+  } else {
+    process.stdout.write(`Access tier: ${accessTier}\n`);
+  }
+
+  if (config.sshStrategy === "disabled") {
+    process.stdout.write(
+      "SSH: off. The API tools all work; re-run setup if you later want to run commands inside containers.\n"
     );
   }
 
   process.stdout.write("\nNext steps:\n");
   process.stdout.write("1. Restart your MCP client so it picks up the new server.\n");
-  process.stdout.write(`2. Run \`nandi-proxmox-mcp doctor --name ${instance.name}\`.\n`);
-  process.stdout.write("3. For any other client, run `nandi-proxmox-mcp setup --print-config`.\n");
+  process.stdout.write(`2. Ask it: "list my Proxmox nodes". That is the whole test.\n`);
+  process.stdout.write(`3. If it cannot, run \`nandi-proxmox-mcp doctor --name ${instance.name}\`.\n`);
+  process.stdout.write("4. For any other client, run `nandi-proxmox-mcp setup --print-config`.\n");
   process.stdout.write(
     "\nHave another Proxmox? Run setup again with a different --name. Each one gets its own\n" +
       "credentials file and its own server entry, so they stay completely separate.\n"

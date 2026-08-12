@@ -28,7 +28,7 @@ type RegistryOptions = {
   transport: "stdio" | "http";
 };
 
-export const registerTools = (server: McpServer, config: RuntimeConfig, options: RegistryOptions): void => {
+export const registerTools = (server: McpServer, config: RuntimeConfig, options: RegistryOptions): Set<string> => {
   const proxmoxClient = new ProxmoxClient(config);
   const ssh = {
     host: config.sshHost,
@@ -44,6 +44,9 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
 
   const policy = new PolicyEngine(loadPolicySettings());
   let registered = 0;
+  // Which canonical tools survived policy filtering. Prompt recipes are gated
+  // on this so a read-only install is never offered a recipe it cannot run.
+  const registeredNames = new Set<string>();
 
   for (const descriptor of toolCatalog) {
     if (!policy.shouldRegister(descriptor, options.transport)) {
@@ -105,6 +108,7 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
       }
     );
     registered += 1;
+    registeredNames.add(descriptor.name);
 
     for (const alias of descriptor.aliases ?? []) {
       server.registerTool(
@@ -162,4 +166,5 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
   }
 
   logger.info("Tool registry initialized", { registered, transport: options.transport });
+  return registeredNames;
 };

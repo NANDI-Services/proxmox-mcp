@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadFileConfig } from "../config/fileConfig.js";
 import { ProxmoxClient } from "../proxmox/client.js";
-import { printReport, type ReportItem } from "./report.js";
+import { hasFailure, printReport, type ReportItem } from "./report.js";
 import { runSshBatch } from "../ssh/sshClient.js";
 import { pctExec } from "../ssh/pctExec.js";
 import { validateMcpManifest } from "../config/installDescriptor.js";
 import { clientAdapters, defaultClientIds, parseClientIds, validateForClient } from "../config/clients.js";
 import { resolveInstanceByName } from "../config/instances.js";
+import { summarizeSshFailure } from "./setup.js";
 
 const parseRequestedChecks = (value?: string): Set<string> => {
   if (!value) {
@@ -168,12 +169,24 @@ export const runDoctor = async (options: DoctorOptions = {}): Promise<void> => {
       );
 
       if (sshRes.exitCode !== 0) {
-        throw new Error(`SSH batch failed. Interactive may still work. stderr=${sshRes.stderr.trim()}`);
+        // ssh's own output is up to fifteen lines of banner; summarize it into
+        // the one line that says what to do.
+        report.push({
+          check: "sshBatch",
+          ok: false,
+          detail: "Non-interactive SSH failed (interactive may still work).",
+          fix: summarizeSshFailure(sshRes.stderr)
+        });
+      } else {
+        report.push({ check: "sshBatch", ok: true, detail: "Batch SSH succeeded" });
       }
-
-      report.push({ check: "sshBatch", ok: true, detail: "Batch SSH succeeded" });
     } catch (error) {
-      report.push({ check: "sshBatch", ok: false, detail: error instanceof Error ? error.message : "Unknown error" });
+      report.push({
+        check: "sshBatch",
+        ok: false,
+        detail: error instanceof Error ? error.message : "Unknown error",
+        fix: "SSH is only needed for container command execution. Set \"sshStrategy\": \"disabled\" in the config file to turn it off."
+      });
     }
 
     const ctid = options.ctid ?? Number.parseInt(process.env.NANDI_DOCTOR_CTID ?? "0", 10);
@@ -196,13 +209,23 @@ export const runDoctor = async (options: DoctorOptions = {}): Promise<void> => {
         report.push({ check: "pctExec", ok: false, detail: error instanceof Error ? error.message : "Unknown error" });
       }
     } else {
+      // Not requested, so not run. It used to be reported as a failure, which
+      // made a clean install look broken to anyone who had not opted into it.
       report.push({
         check: "pctExec",
-        ok: false,
-        detail: "Pass --ctid <id> or set NANDI_DOCTOR_CTID to validate CT remote operation"
+        ok: true,
+        skipped: true,
+        detail: "Not checked. Pass --ctid <id> to try `pct exec` inside a real container."
       });
     }
   }
 
   printReport("Doctor report", report);
+
+  if (hasFailure(report)) {
+    process.stdout.write("\nSomething above is RED. `docs/EMPEZAR.md` lists the usual causes.\n");
+    return;
+  }
+
+  process.stdout.write("\nAll good. Restart your MCP client and ask it to list your Proxmox nodes.\n");
 };

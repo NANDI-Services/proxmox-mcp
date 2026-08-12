@@ -33,6 +33,12 @@ npx vitest run -c vitest.e2e.config.ts tests/e2e/cluster-routing.e2e.test.ts
 
 `npm run clean` uses cmd.exe syntax and only works on Windows.
 
+### The CLI has an interactive path that is easy to disable by accident
+
+`setup` chooses between the wizard and the scripted path via `hasCliOverrides`, which looks **only** at `--proxmox-host`, `--proxmox-user`, `--token-name` and `--token-secret`. It cannot go back to asking "was any option defined?": commander supplies defaults for `--proxmox-realm` and `--scope`, so that test is always true and the bare `nandi-proxmox-mcp setup` dies with "missing required options" instead of prompting. `tests/unit/setupWizard.test.ts` pins this.
+
+The wizard takes an injectable `Prompt` and `probe` (`ask(options, deps)`) so it can be driven by a test. Piping a file into the real readline does not work — readline flushes every line at once, lines arriving between two questions are dropped, and the process then exits cleanly having answered nothing, which reads as a hang.
+
 ## Architecture
 
 ### Tools are data, not handlers
@@ -40,6 +46,8 @@ npx vitest run -c vitest.e2e.config.ts tests/e2e/cluster-routing.e2e.test.ts
 All ~143 tools are descriptors in one array, `toolCatalog` in `src/tools/catalog.ts`. Almost every one is built by the `apiTool()` helper from an `EndpointDescriptor` (method + path + params); the rest are the five SSH-backed tools. `src/server/toolRegistry.ts` walks that array and registers each with the MCP SDK.
 
 **Adding a Proxmox endpoint means adding a descriptor, not writing a function.** After any catalog change run `npm run docs:tools` — CI regenerates `docs/TOOLS.md` and fails on any diff.
+
+`registerTools` returns the set of canonical tool names that survived policy filtering. `src/server/prompts.ts` uses it: each prompt recipe declares the tools it needs and is skipped when they are absent, so a `read-only` install is never offered a recipe it cannot run. A recipe naming a tool that does not exist fails silently by simply never registering — `tests/unit/prompts.test.ts` pins every name against `toolCatalog` for that reason.
 
 ### Every call goes through the guardian
 
@@ -68,7 +76,9 @@ Only a connectivity failure (ssh exit 255) justifies trying the next route — a
 
 `src/config/instances.ts` models instances: each configured Proxmox gets its own credentials file and its own entry in the client config, selected at runtime by `NANDI_PROXMOX_CONFIG`. Isolation is the process boundary, deliberately — a lab instance holds no credentials for a production cluster, which no tool argument could guarantee.
 
-`src/config/clients.ts` adapts the same server entry to each MCP client's shape (Claude Code's `.mcp.json` uses `mcpServers`, VS Code's `.vscode/mcp.json` uses `servers`). Writes **merge** into an existing file and refuse to overwrite one that does not parse.
+When `NANDI_PROXMOX_CONFIG` is unset, `discoverConfigPath()` (`src/config/fileConfig.ts`) resolves it: legacy `config.json` first for pre-instances installs, then `findInstances`. **Project scope wins over user scope** — without that precedence, anyone with two user-scope instances would hit an ambiguity error in every directory. Two candidates in the same scope is an error naming both, never a guess about which cluster to touch. This is what lets a published client config omit absolute paths.
+
+`src/config/clients.ts` adapts the same server entry to each MCP client's shape (Claude Code's `.mcp.json` uses `mcpServers`, VS Code's `.vscode/mcp.json` uses `servers`). Writes **merge** into an existing file and refuse to overwrite one that does not parse. That mapping is the authority: `scripts/validate-package-metadata.mjs` follows it when checking the marketplace plugin's `.mcp.json`, which previously shipped the VS Code root key and an unusable absolute path.
 
 ### Transports
 

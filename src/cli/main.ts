@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { runSetup } from "./setup.js";
 import { runDoctor } from "./doctor.js";
+import { runBootstrap, type BootstrapOptions } from "./bootstrap.js";
 import { loadFileConfig } from "../config/fileConfig.js";
 import { findInstances } from "../config/instances.js";
 import { loadEnvConfig } from "../config/env.js";
@@ -13,6 +14,19 @@ import { startMcpServer } from "../server/mcpServer.js";
 const program = new Command();
 
 program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.2.4");
+
+program
+  .command("bootstrap")
+  .description("Print the commands that create a Proxmox API token, ready to paste into the Proxmox shell")
+  .option("--user <user>", "Proxmox user to create, without realm", "mcp")
+  .option("--realm <realm>", "Proxmox realm", "pve")
+  .option("--token-name <name>", "API token name", "nandi")
+  .option("--tier <tier>", "Permissions to grant: read-only, read-execute, full", "read-only")
+  .option("--ssh-key <path>", "Public key to authorize on the node (only for container command execution)")
+  .option("--new-ssh-key", "Generate a new ed25519 keypair first, then authorize it")
+  .action(async (options: BootstrapOptions) => {
+    await runBootstrap(options);
+  });
 
 program
   .command("setup")

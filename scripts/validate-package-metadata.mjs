@@ -73,12 +73,45 @@ expect(
     marketplaceManifest.plugins.some((entry) => entry?.id === expectedPackageName),
   `marketplace plugins must list ${expectedPackageName}`
 );
-expect(pluginMcpConfig?.servers?.[expectedPackageName]?.command === "npx", "plugin .mcp.json command must be npx");
+// `.mcp.json` is Claude Code's filename and its root key is `mcpServers`; the
+// `servers` root belongs to `.vscode/mcp.json`. See src/config/clients.ts,
+// which is the authority both this file and setup follow.
+const pluginServer = pluginMcpConfig?.mcpServers?.[expectedPackageName];
+expect(pluginServer !== undefined, `plugin .mcp.json must define mcpServers.${expectedPackageName}`);
+expect(pluginServer?.command === "npx", "plugin .mcp.json command must be npx");
 
-const pluginArgs = pluginMcpConfig?.servers?.[expectedPackageName]?.args;
+const pluginArgs = pluginServer?.args;
 expect(Array.isArray(pluginArgs), "plugin .mcp.json args must be an array");
 expect(pluginArgs?.[0] === `${expectedPackageName}@${packageJson.version}`, "plugin .mcp.json must pin the published npm version");
 expect(pluginArgs?.[1] === "run", "plugin .mcp.json args[1] must be run");
+
+// A published plugin runs on someone else's machine, so it cannot name a path.
+// It used to point NANDI_PROXMOX_CONFIG at `${workspaceFolder}\.nandi-proxmox-mcp\config.json`:
+// a VS Code variable, Windows separators, and the legacy filename the
+// multi-instance layout stopped writing. Installing it produced a server that
+// could not start, and nothing here opened the env block to notice.
+// The server discovers the config itself now, so the key must simply be absent.
+const pluginEnv = pluginServer?.env ?? {};
+expect(
+  pluginEnv.NANDI_PROXMOX_CONFIG === undefined,
+  "plugin .mcp.json must not set NANDI_PROXMOX_CONFIG: the path differs per machine and the server discovers it"
+);
+
+for (const [key, value] of Object.entries(pluginEnv)) {
+  const text = String(value);
+  expect(
+    !/[\\/]|\$\{|%[A-Za-z_]+%/.test(text),
+    `plugin .mcp.json env.${key} must not contain a path or a client-specific variable (got "${text}")`
+  );
+}
+
+// Shipping the permissive default to people who install by one click is the
+// wrong way round: the server defaults to `full`, so the plugin states the
+// restricted tier explicitly.
+expect(
+  pluginEnv.PVE_ACCESS_TIER === "read-only",
+  "plugin .mcp.json must set PVE_ACCESS_TIER=read-only; the server default is full"
+);
 
 expect(manifest.id === expectedPackageName, `manifest id must be ${expectedPackageName}`);
 expect(manifest.runtime?.command === "npx", "manifest runtime.command must be npx");

@@ -1,10 +1,10 @@
 {
-  "servers": {
+  "mcpServers": {
     "nandi-proxmox-mcp": {
       "command": "npx",
       "args": ["nandi-proxmox-mcp@0.2.4", "run"],
       "env": {
-        "NANDI_PROXMOX_CONFIG": "${workspaceFolder}\\.nandi-proxmox-mcp\\config.json"
+        "PVE_ACCESS_TIER": "read-only"
       }
     }
   }

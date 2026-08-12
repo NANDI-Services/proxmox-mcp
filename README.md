@@ -91,7 +91,15 @@ HTTP transport:
 
 ### Local config file
 
-Setup writes `.nandi-proxmox-mcp/config.json` and `.vscode/mcp.json`.
+Setup writes one credentials file per configured Proxmox,
+`.nandi-proxmox-mcp/<instance>.json`, plus a registration entry in each client
+config it was asked for — `.mcp.json` for Claude Code and `.vscode/mcp.json` for
+VS Code, by default both.
+
+The credentials file is the only one holding the token, and it is gitignored.
+When `NANDI_PROXMOX_CONFIG` is not set, the server discovers it: a single
+configured instance is used automatically, and more than one is an error naming
+them rather than a guess.
 
 The config loader now rejects:
 - empty or malformed config paths
@@ -100,9 +108,22 @@ The config loader now rejects:
 
 ## Quick start
 
-Guided setup. By default this writes config for **Claude Code** (`.mcp.json`)
-and **VS Code** (`.vscode/mcp.json`), merging into either file if it already
-exists:
+> **Never used an MCP before?** Start with
+> [docs/EMPEZAR.md](docs/EMPEZAR.md) — a step-by-step guide (in Spanish) that
+> assumes no prior MCP knowledge and covers creating the Proxmox token, which
+> is the part that trips most people up.
+
+You need an API token from your own Proxmox first. This prints the commands
+that create one, ready to paste into the Proxmox shell — it connects to
+nothing:
+
+```powershell
+npx nandi-proxmox-mcp bootstrap --tier read-only
+```
+
+Then guided setup. By default this writes config for **Claude Code**
+(`.mcp.json`) and **VS Code** (`.vscode/mcp.json`), merging into either file if
+it already exists:
 
 ```powershell
 npx nandi-proxmox-mcp setup --access-tier read-only
@@ -283,6 +304,8 @@ This repository follows a documentation sync policy, enforced in review rather t
 
 ## Docs
 
+- [docs/EMPEZAR.md](docs/EMPEZAR.md) — start here if MCP servers are new to you
+- [docs/CLAUDE_CODE_SETUP.md](docs/CLAUDE_CODE_SETUP.md)
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
 - [docs/PERMISSIONS.md](docs/PERMISSIONS.md)
 - [docs/SECURITY.md](docs/SECURITY.md)
