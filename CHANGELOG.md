@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 - 2026-08-13
+
+### Fixed
+
+- gate the version literals that live in code, and release on push
+
 ## 0.3.1 - 2026-08-13
 
 `0.3.0` was tagged but never published: the release job ran Node 20, whose npm

@@ -1,7 +1,7 @@
 {
   "id": "nandi-proxmox-mcp",
   "name": "NANDI Proxmox MCP",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Install and use nandi-proxmox-mcp from Codex/VS Code plugin marketplace.",
   "publisher": "NANDI-Services",
   "homepage": "https://github.com/NANDI-Services/proxmox-mcp",
