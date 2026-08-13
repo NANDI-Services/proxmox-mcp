@@ -44,9 +44,9 @@ npm run validate:package-metadata
 On a clean machine:
 
 ```powershell
-npx nandi-proxmox-mcp@0.3.0 --version
-npx nandi-proxmox-mcp@0.3.0 setup
-npx nandi-proxmox-mcp@0.3.0 doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
+npx nandi-proxmox-mcp@0.3.1 --version
+npx nandi-proxmox-mcp@0.3.1 setup
+npx nandi-proxmox-mcp@0.3.1 doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
 
 Then confirm:
