@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { runSetup } from "./setup.js";
 import { runDoctor } from "./doctor.js";
+import { runHarden, type HardenOptions } from "./harden.js";
 import { runBootstrap, type BootstrapOptions } from "./bootstrap.js";
 import { loadFileConfig } from "../config/fileConfig.js";
 import { findInstances } from "../config/instances.js";
@@ -13,7 +14,7 @@ import { startMcpServer } from "../server/mcpServer.js";
 
 const program = new Command();
 
-program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.2.4");
+program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.3.0");
 
 program
   .command("bootstrap")
@@ -62,6 +63,15 @@ program
   .option("--name <name>", "Which configured Proxmox instance to check")
   .action(async (options: { check?: string; ctid?: number; clients?: string; name?: string }) => {
     await runDoctor(options);
+  });
+
+program
+  .command("harden")
+  .description("Require human approval for every destructive tool of a configured instance")
+  .option("--name <name>", "Which instance to harden (default: every one configured)")
+  .option("--scope <scope>", "Only used with --name for an instance configured by hand: project or user", "project")
+  .action(async (options: HardenOptions) => {
+    await runHarden(options);
   });
 
 program

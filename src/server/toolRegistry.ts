@@ -24,6 +24,25 @@ const toolAnnotations = (descriptor: ToolDescriptor) => ({
   openWorldHint: false
 });
 
+/**
+ * Forces the client to put a human in front of every destructive call.
+ *
+ * `confirmRequired` alone cannot do this: the `confirm=true` it asks for is
+ * supplied by the agent, not by a person, so a model that reads the rejection
+ * simply retries with the flag set. It guards against an accident, not against
+ * a confident agent.
+ *
+ * This annotation is answered by the operator instead. A client that honours it
+ * prompts on every call even in permission modes that skip prompts, offers no
+ * "don't ask again", and ignores allow rules and hook approvals for the tool --
+ * so the person who pressed enter is the one who authorised the deletion.
+ *
+ * Emitted only when true: any other value is ignored by spec, and an explicit
+ * `false` would read like a considered exemption rather than a plain no.
+ */
+const humanGateMeta = (descriptor: ToolDescriptor): Record<string, true> =>
+  descriptor.confirmRequired ? { "anthropic/requiresUserInteraction": true } : {};
+
 type RegistryOptions = {
   transport: "stdio" | "http";
 };
@@ -60,6 +79,7 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
         inputSchema: descriptor.inputShape,
         annotations: toolAnnotations(descriptor),
         _meta: {
+          ...humanGateMeta(descriptor),
           category: descriptor.category,
           accessTier: descriptor.accessTier,
           destructive: descriptor.destructive,
@@ -118,6 +138,10 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
           inputSchema: descriptor.inputShape,
           annotations: toolAnnotations(descriptor),
           _meta: {
+            // The alias is a separate tool name on the wire, so it needs the
+            // gate in its own right: without this, `stopVM` would execute
+            // unprompted while `pve_stop_qemu_vm` asks.
+            ...humanGateMeta(descriptor),
             aliasFor: descriptor.name,
             deprecated: true
           }
