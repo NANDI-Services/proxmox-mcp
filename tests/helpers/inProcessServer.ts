@@ -16,7 +16,12 @@ export const unreachableConfig = (): RuntimeConfig => ({
   proxmoxUser: "mcp",
   proxmoxRealm: "pve",
   tokenName: "nandi",
-  tokenSecret: "0123456789abcdef",
+  // Deliberately word-shaped rather than hex. The schema only requires ten
+  // characters, and a random-looking literal next to a key called
+  // `tokenSecret` is what the CI secret scanner's generic-api-key rule exists
+  // to catch -- it cannot tell a placeholder from the real thing, and it is
+  // right not to try.
+  tokenSecret: "placeholder-not-a-real-secret",
   allowInsecureTls: true,
   sshHost: "127.0.0.1",
   sshPort: 22,
