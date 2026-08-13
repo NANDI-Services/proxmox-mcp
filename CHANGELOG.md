@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.3.0 - 2026-08-13
+## 0.3.1 - 2026-08-13
+
+`0.3.0` was tagged but never published: the release job ran Node 20, whose npm
+cannot perform the OIDC exchange that trusted publishing needs, so `npm publish`
+failed with `ENEEDAUTH` before uploading anything. There is no `0.3.0` on npm and
+no release under that tag. The fix is in the pipeline, not in the package, so the
+contents below are what `0.3.0` would have been.
 
 ### Added: a person has to approve destructive operations
 
