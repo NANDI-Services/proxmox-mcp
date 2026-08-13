@@ -21,9 +21,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1: the OIDC
+          # token exchange is done by the npm CLI itself. On Node 20 (npm 10.x)
+          # `npm publish` never attempts it, falls back to looking for a classic
+          # token, finds none and fails with ENEEDAUTH -- which reads like a
+          # missing secret rather than a too-old client.
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -36,6 +43,11 @@ jobs:
       - run: npm ls path-to-regexp
       - run: npm pack --dry-run
       - run: npm pack
+      # This step used to echo a message and exit 0 when NPM_TOKEN was empty, so
+      # it reported "Verify npm authentication OK" having verified nothing, and
+      # the real problem surfaced three steps later with the tarball already
+      # built. A check that could not run is not a check that passed, so the
+      # OIDC branch now asserts the one precondition that silently breaks it.
       - name: Verify npm authentication
         shell: bash
         env:
@@ -48,7 +60,16 @@ jobs:
             exit 0
           fi
 
-          echo "NPM_TOKEN is not configured; falling back to npm trusted publishing via GitHub OIDC."
+          echo "NPM_TOKEN is not configured; using npm trusted publishing via GitHub OIDC."
+
+          NPM_VERSION="$(npm --version)"
+          echo "npm ${NPM_VERSION}, node $(node --version)"
+
+          if ! npx --yes semver@7 -r ">=11.5.1" "$NPM_VERSION" >/dev/null; then
+            echo "npm ${NPM_VERSION} cannot perform the OIDC exchange; trusted publishing needs >= 11.5.1." >&2
+            echo "It would fail at publish time with ENEEDAUTH, which looks like a missing secret." >&2
+            exit 1
+          fi
       - name: Publish to npm
         shell: bash
         env:
