@@ -17,7 +17,37 @@
 - Publicación segura requiere orden estricto: `validar -> empaquetar -> npm -> marketplace`.
 - Errores de red/auth no son de código: hay que aislarlos rápido para no perder tiempo.
 
-## Runbook obligatorio para próximas releases
+## Releases: automáticas por push a main
+
+**No se tagea a mano.** `auto-release.yml` corre en cada push a `main`, deriva el nivel del bump
+de los conventional commits desde el último tag `v*`, escribe la versión con
+`scripts/set-version.mjs`, commitea `chore(release): vX.Y.Z`, tagea, y el push del tag dispara
+`release.yml`, que es quien publica.
+
+- `feat` → minor · `fix`/`perf`/`revert` → patch · `!` o footer `BREAKING CHANGE:` → **major**
+  (semver estricto: un breaking en 0.x va a 1.0.0, no a 0.4.0).
+- `chore`, `docs`, `test`, `ci`, `build`, `style`, `refactor` **no publican**. Un push que sólo
+  los contenga termina en verde sin release, y lista los commits que descartó.
+- Los commits que no matchean conventional commits se ignoran, no rompen la corrida.
+- **Antes de confiar en un cambio de la lógica de versionado, correr el workflow con
+  `dry_run: true`** desde Actions: calcula, bumpea y corre los gates, imprime el diff y no
+  commitea nada.
+- El guard `if:` que saltea los commits `chore(release):` es lo único que evita que el workflow
+  se dispare a sí mismo en loop. No reemplazarlo por `[skip ci]`: eso suprime eventos push, y el
+  push del tag es uno — saltearía el release que acaba de preparar.
+
+**Una sola fuente de versión.** Hay ocho lugares que la llevan (manifiestos, descriptores,
+espejo del marketplace, docs y dos literales de TypeScript). `scripts/set-version.mjs` los
+escribe todos y falla si alguna regla no matchea; `validate-package-metadata.mjs` los verifica
+todos contra `package.json`. Al agregar un lugar nuevo hay que tocar **los dos**: un escritor
+que toca un archivo que el validador no mira es exactamente cómo 0.3.1 salió publicado
+diciendo ser 0.2.4.
+
+Requisito de infraestructura: el secret `RELEASE_TOKEN` (fine-grained PAT o GitHub App con
+`Contents: write`) tiene que estar en el bypass del ruleset `main-branch-protection`. Sin eso
+el push del bump a main lo rechaza la protección de rama.
+
+## Runbook para releases manuales (fallback)
 
 ### 1) Gates técnicos (bloqueantes)
 - `npm run lint`
