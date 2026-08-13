@@ -83,22 +83,47 @@ jobs:
         run: |
           set -euo pipefail
 
+          VERSION="$(node -p "require('./package.json').version")"
+
+          # Makes the job re-runnable. A later step failing used to leave the
+          # release half done -- npm published, registry and GitHub Release not
+          # -- and re-running died here on "cannot publish over the previously
+          # published version", so the only way forward was by hand.
+          if npm view "nandi-proxmox-mcp@${VERSION}" version >/dev/null 2>&1; then
+            echo "nandi-proxmox-mcp@${VERSION} is already on npm; skipping publish."
+            exit 0
+          fi
+
           if [[ -n "${NODE_AUTH_TOKEN:-}" ]]; then
             npm publish --access public
             exit 0
           fi
 
           npm publish --access public --provenance
+      # The registry is read-after-write eventually consistent. This check used
+      # to run within a second of the publish and read the *previous* version,
+      # failing a release that had in fact succeeded: v0.3.2 was published at
+      # 05:39:27.336Z and this step still saw 0.3.1 at 05:39:28.09.
       - name: Verify published npm version
         shell: bash
         run: |
           set -euo pipefail
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
-          ACTUAL_VERSION="$(npm view nandi-proxmox-mcp version --json | tr -d '"')"
-          if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
-            echo "npm version drift: expected $EXPECTED_VERSION, got $ACTUAL_VERSION" >&2
-            exit 1
-          fi
+
+          for attempt in {1..12}; do
+            ACTUAL_VERSION="$(npm view nandi-proxmox-mcp version --json 2>/dev/null | tr -d '"' || true)"
+
+            if [[ "$ACTUAL_VERSION" == "$EXPECTED_VERSION" ]]; then
+              echo "npm reports ${ACTUAL_VERSION} after ${attempt} attempt(s)."
+              exit 0
+            fi
+
+            echo "attempt ${attempt}: npm still reports '${ACTUAL_VERSION}', waiting for ${EXPECTED_VERSION}"
+            sleep 10
+          done
+
+          echo "npm version drift: expected ${EXPECTED_VERSION}, got '${ACTUAL_VERSION}' after 2 minutes" >&2
+          exit 1
       - name: Install mcp-publisher
         shell: bash
         run: |
