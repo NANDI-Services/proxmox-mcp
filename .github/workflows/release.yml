@@ -29,8 +29,11 @@ jobs:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
+      # Pinned, not `npm@latest`: this job holds `id-token: write` and can publish
+      # the package, so whatever runs in it has to be a version somebody chose.
+      # 11.5.1 is the documented minimum for the OIDC exchange; bump deliberately.
       - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.5.1
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -65,7 +68,10 @@ jobs:
           NPM_VERSION="$(npm --version)"
           echo "npm ${NPM_VERSION}, node $(node --version)"
 
-          if ! npx --yes semver@7 -r ">=11.5.1" "$NPM_VERSION" >/dev/null; then
+          # Compared with sort -V rather than by fetching a semver package: this
+          # step exists to protect the publish, so it must not itself download
+          # and execute code inside the job that does the publishing.
+          if [[ "$(printf '%s\n%s\n' "$NPM_VERSION" "11.5.1" | sort -V | head -1)" != "11.5.1" ]]; then
             echo "npm ${NPM_VERSION} cannot perform the OIDC exchange; trusted publishing needs >= 11.5.1." >&2
             echo "It would fail at publish time with ENEEDAUTH, which looks like a missing secret." >&2
             exit 1
