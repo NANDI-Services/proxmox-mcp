@@ -1,0 +1,127 @@
+name: Auto Release
+
+# Turns a merge into main into a released version: the bump level is read from
+# the conventional-commit subjects since the last tag, every file that carries a
+# version is rewritten by one script, and the tag push hands off to `release.yml`
+# for the actual publish.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compute the version and print the diff without committing or publishing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # The bump commit is itself a push to main, so without this guard the
+    # workflow would trigger itself forever. `[skip ci]` is deliberately not
+    # used instead: it suppresses push events, and the tag push is one, which
+    # would skip the release it just prepared.
+    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version is derived from the commits since the last tag, so the
+          # default shallow clone would see neither.
+          fetch-depth: 0
+          # A workflow pushing to main needs an identity the `main-branch-protection`
+          # ruleset lets through, and a tag pushed with GITHUB_TOKEN would not
+          # trigger `release.yml` at all.
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Decide the next version
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/next-version.mjs > "$RUNNER_TEMP/plan.json"
+          cat "$RUNNER_TEMP/plan.json"
+
+          for key in releasable next level; do
+            echo "${key}=$(node -p "require('$RUNNER_TEMP/plan.json').${key}")" >> "$GITHUB_OUTPUT"
+          done
+
+      # A release that does not happen has to say so. A silent skip reads
+      # exactly like a successful publish in the runs list.
+      - name: Report that nothing is releasable
+        if: steps.plan.outputs.releasable != 'true'
+        shell: bash
+        run: |
+          echo "No releasable commits since the last tag; nothing published."
+          echo "Commits considered and ignored are listed in the previous step."
+
+      - name: Refuse to reuse an existing tag
+        if: steps.plan.outputs.releasable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.plan.outputs.next }}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "${TAG} already exists. The version calculation and the tag history disagree." >&2
+            exit 1
+          fi
+
+      - name: Write the version everywhere
+        if: steps.plan.outputs.releasable == 'true'
+        run: |
+          node scripts/set-version.mjs "${{ steps.plan.outputs.next }}"
+          node scripts/write-changelog.mjs "${{ steps.plan.outputs.next }}"
+
+      # Run against the bumped tree, not the tree the pull request validated:
+      # `set-version` edits TypeScript sources, so this is different code.
+      - name: Gates
+        if: steps.plan.outputs.releasable == 'true'
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run build
+          npm run validate:release
+          npm run docs:tools
+          git diff --exit-code docs/TOOLS.md
+          npm test
+
+      - name: Dry run - show what would be released
+        if: steps.plan.outputs.releasable == 'true' && inputs.dry_run
+        shell: bash
+        run: |
+          echo "DRY RUN: would release v${{ steps.plan.outputs.next }} (${{ steps.plan.outputs.level }})"
+          git --no-pager diff --stat
+          git --no-pager diff -- CHANGELOG.md
+
+      - name: Commit, tag and hand off to the publish workflow
+        if: steps.plan.outputs.releasable == 'true' && !inputs.dry_run
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.plan.outputs.next }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "chore(release): v${VERSION}"
+
+          # The branch goes first: a tag pointing at a commit that is not on
+          # main yet would publish something nobody can check out.
+          git push origin HEAD:main
+          git tag -a "v${VERSION}" -m "v${VERSION}"
+          git push origin "v${VERSION}"
+
+          echo "Pushed v${VERSION}; release.yml takes it from here." >> "$GITHUB_STEP_SUMMARY"

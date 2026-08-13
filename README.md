@@ -296,7 +296,28 @@ Threat model and residual risks: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 
 ## Publish flow
 
-Release order is strict:
+**Releases are automatic.** A push to `main` runs `auto-release.yml`, which reads the bump level
+from the conventional-commit subjects since the last `v*` tag, writes the new version into every
+file that carries one, commits `chore(release): vX.Y.Z`, and pushes the tag. The tag is what
+starts `release.yml` and the publish below.
+
+| Commit | Bump |
+| :-- | :-- |
+| `feat:` | minor |
+| `fix:`, `perf:`, `revert:` | patch |
+| `feat!:` or a `BREAKING CHANGE:` footer | **major** — strict semver, so `0.x` goes to `1.0.0` |
+| `chore:`, `docs:`, `test:`, `ci:`, `build:`, `style:`, `refactor:` | nothing is published |
+
+A push with nothing releasable finishes green and lists the commits it skipped. Run the workflow
+by hand with `dry_run: true` to see the version and the diff without publishing.
+
+The version lives in eight places — manifests, both registry descriptors, the marketplace plugin,
+two docs examples and two TypeScript literals. `scripts/set-version.mjs` writes all of them and
+`scripts/validate-package-metadata.mjs` gates all of them. **Adding a ninth means editing both**:
+a writer that touches a file the validator ignores is how `0.3.1` shipped announcing itself as
+`0.2.4`.
+
+Release order, once the tag exists, is strict:
 
 1. `npm run lint`
 2. `npm run typecheck`

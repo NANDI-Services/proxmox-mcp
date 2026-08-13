@@ -119,16 +119,45 @@ expect(Array.isArray(manifest.runtime?.args), "manifest runtime.args must be an 
 expect(manifest.runtime?.args?.[0] === expectedPackageName, "manifest runtime args[0] must be the package name");
 expect(manifest.runtime?.args?.[1] === "run", "manifest runtime args[1] must be run");
 
+// Versions that live in *code* rather than in a manifest.
+//
+// This gate used to cover only the JSON artifacts below, so these two drifted
+// unnoticed and 0.3.1 shipped introducing itself to MCP clients as 0.2.4. Every
+// site `scripts/set-version.mjs` writes has to be checked here: a writer that
+// touches a place the validator does not look is exactly how that happened.
+const readSourceVersion = async (relativePath, pattern, label) => {
+  const source = await readFile(resolve(root, relativePath), "utf8");
+  const match = source.match(pattern);
+  expect(match !== null, `${label}: no version literal found in ${relativePath}; the file changed shape`);
+  return match?.[1];
+};
+
+const cliVersion = await readSourceVersion("src/cli/main.ts", /\.version\("([^"]*)"\)/, "CLI --version");
+const serverInfoVersion = await readSourceVersion(
+  "src/server/mcpServer.ts",
+  /name: "nandi-proxmox-mcp",\s*\n\s*version: "([^"]*)"/,
+  "MCP serverInfo"
+);
+
+const goLiveDoc = await readFile(resolve(root, "docs/MARKETPLACE_GO_LIVE.md"), "utf8");
+const goLivePins = [...goLiveDoc.matchAll(/npx nandi-proxmox-mcp@([\d.]+)/g)].map((match) => match[1]);
+expect(goLivePins.length > 0, "MARKETPLACE_GO_LIVE must pin the published version in its examples");
+
 const versionedArtifacts = [
   ["package.json", packageJson.version],
   [".mcp/server.json", descriptor.version],
   ["marketplace/mcp-registry/server.json", marketplaceDescriptor.version],
   ["marketplace plugin.json", pluginManifest.version],
-  ["descriptor package version", descriptor.packages?.[0]?.version]
+  ["descriptor package version", descriptor.packages?.[0]?.version],
+  ["src/cli/main.ts --version", cliVersion],
+  // The one clients display. A stale value here sends a bug report to the
+  // wrong version and nothing else notices.
+  ["src/server/mcpServer.ts serverInfo", serverInfoVersion],
+  ...goLivePins.map((pin, index) => [`docs/MARKETPLACE_GO_LIVE.md pin #${index + 1}`, pin])
 ];
 
 for (const [label, value] of versionedArtifacts) {
-  expect(value === packageJson.version, `${label} must match package.json version ${packageJson.version}`);
+  expect(value === packageJson.version, `${label} must match package.json version ${packageJson.version} (got ${value})`);
 }
 
 if (errors.length > 0) {
