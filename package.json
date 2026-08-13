@@ -81,8 +81,8 @@
     "@modelcontextprotocol/sdk": "1.27.1",
     "commander": "13.1.0",
     "express": "5.2.1",
-    "express-rate-limit": "8.3.1",
-    "undici": "7.24.4",
+    "express-rate-limit": "8.6.2",
+    "undici": "7.29.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -96,11 +96,14 @@
   },
   "overrides": {
     "@modelcontextprotocol/sdk": "1.27.1",
-    "@hono/node-server": "1.19.14",
+    "@hono/node-server": "1.19.17",
     "express": "5.2.1",
-    "hono": "4.12.12",
+    "fast-uri": "3.1.5",
+    "hono": "4.13.1",
+    "ip-address": "10.5.0",
     "path-to-regexp": "8.4.0",
-    "undici": "7.24.4",
+    "qs": "6.15.3",
+    "undici": "7.29.0",
     "eslint": "9.39.4"
   }
 }
