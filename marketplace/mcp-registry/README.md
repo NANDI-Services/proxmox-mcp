@@ -1,6 +1,8 @@
 # MCP Registry manual fallback
 
-Use this only when the automated `release.yml` flow cannot publish the descriptor.
+Use this only when re-running `release.yml` is not an option — that is the first recourse now
+(`gh workflow run release.yml --ref vX.Y.Z`), and it skips whatever already published. This path
+is for tags cut before that workflow accepted a manual dispatch, which cannot be dispatched at all.
 
 ## Publish
 

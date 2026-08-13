@@ -120,10 +120,12 @@ jobs:
           set -euo pipefail
           for attempt in {1..10}; do
             if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              echo "Registry converged after ${attempt} attempt(s)."
               curl -fsS "$MCP_REGISTRY_URL?search=$MCP_NAME" | tee registry-after.json
               jq '.servers | map({name: .server.name, version: .server.version, status: ._meta["io.modelcontextprotocol.registry/official"].status, isLatest: ._meta["io.modelcontextprotocol.registry/official"].isLatest})' registry-after.json
               exit 0
             fi
+            echo "attempt ${attempt}: registry has not converged yet, waiting"
             sleep 15
           done
 

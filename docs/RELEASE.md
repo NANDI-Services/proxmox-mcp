@@ -65,18 +65,38 @@ Artifacts kept in sync by the repo:
 ## CI/CD behavior
 
 - `ci.yml`
+  - lints the workflow files themselves, before anything else
   - validates metadata/descriptors
   - builds, tests, audits, and checks the package tarball
 - `release.yml`
+  - refuses any ref that is not a tag named `v<package.json version>`
   - publishes npm first
-  - verifies npm version
+  - verifies npm version, retrying while the registry catches up
   - then publishes the MCP Registry descriptor
+  - re-runnable by hand: `gh workflow run release.yml --ref vX.Y.Z`
 - `mcp-publish.yml`
-  - manual fallback only
+  - manual fallback, only once re-running `release.yml` is not an option
 
 This removes the previous race where registry publication could run before npm had the tagged version.
 
 ## Troubleshooting
+
+### A release published to npm but the registry or the GitHub Release never happened
+
+- Re-run it: `gh workflow run release.yml --ref vX.Y.Z`.
+- Every publishing step checks its destination before writing, so the re-run skips what already
+  landed and completes what did not. This is the supported recovery; finishing it by hand is not.
+- Tags cut before `release.yml` accepted a manual dispatch cannot be dispatched at all — GitHub
+  reads the trigger list from the workflow file **at the ref being dispatched**, not from the
+  default branch. For those, use `gh release create vX.Y.Z --generate-notes` and `mcp-publish.yml`.
+
+### The release job refuses to start, naming the ref
+
+- `Refusing to publish from branch '...'` — you dispatched against a branch. Dispatch against the
+  tag instead.
+- `Tag '...' disagrees with package.json '...'` — the tag and the version in the tree are not the
+  same. Publishing past this is how `0.3.1` shipped announcing itself as `0.2.4`, so the job stops
+  rather than guessing which of the two is right.
 
 ### `npm audit` fails because of a withdrawn or dev-only advisory
 

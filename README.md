@@ -336,6 +336,11 @@ Release order, once the tag exists, is strict:
 
 The tag-based `release.yml` now publishes npm first and only then publishes the MCP Registry descriptor, preventing npm/registry drift on the same version.
 
+**If a release dies halfway, re-run it** — `gh workflow run release.yml --ref vX.Y.Z` — rather than
+finishing it by hand. Every publishing step asks its destination first and skips what is already
+there, so the re-run completes only the parts that did not happen. The job refuses any ref that is
+not a tag, and any tag that disagrees with the version in `package.json`.
+
 Manual fallback and troubleshooting: [docs/RELEASE.md](docs/RELEASE.md)
 
 ## Development
