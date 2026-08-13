@@ -57,10 +57,20 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 - No commitear `*.tgz`.
 
 ### 4) Publish npm
-- `npm whoami`
-- `npm publish --access public`
-- Si pide OTP/browser auth: completar flujo de `https://www.npmjs.com/auth/cli/...`.
-- Verificar: `npm view nandi-proxmox-mcp version`.
+
+**El publish lo hace `release.yml` al pushear el tag `v*`, no a mano.** El paquete usa
+trusted publishing (OIDC) contra `NANDI-Services/proxmox-mcp` + `release.yml`, así que no hay
+`NPM_TOKEN` en el repo y no hace falta.
+
+- **Requisito no obvio: npm >= 11.5.1 y Node >= 22.14.0 en el runner.** El intercambio OIDC lo
+  hace el CLI de npm. Con un CLI viejo `npm publish` ni lo intenta, busca un token clásico, no
+  lo encuentra y falla con `ENEEDAUTH` — que se lee como "falta el secret" y manda a buscar el
+  problema al lugar equivocado. Pasó con Node 20 (npm 10.x) en v0.3.0.
+- Con trusted publishing la provenance sale sola; `--provenance` es redundante.
+- Verificar después: `npm view nandi-proxmox-mcp version`.
+- Fallback manual (sólo si el trusted publishing no está disponible): `npm whoami` +
+  `npm publish --access public`, completando el flujo OTP/browser de
+  `https://www.npmjs.com/auth/cli/...`.
 
 ### 5) Publish MCP Registry / Marketplace
 - `mcp-publisher login github` (siempre refrescar sesión antes de publish).
