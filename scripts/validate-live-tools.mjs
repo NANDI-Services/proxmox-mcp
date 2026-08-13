@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
+// Stamped into the report so a snapshot can be tied to the code that produced it.
+const pkgVersion = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version;
 const distCatalog = await import(`file://${resolve(root, "dist/src/tools/catalog.js").replaceAll("\\", "/")}`);
 const distClient = await import(`file://${resolve(root, "dist/src/proxmox/client.js").replaceAll("\\", "/")}`);
 const distPolicy = await import(`file://${resolve(root, "dist/src/server/policy.js").replaceAll("\\", "/")}`);
@@ -89,6 +91,12 @@ const buildArgs = (tool) => {
 };
 
 const report = {
+  note:
+    "Manual snapshot of one operator's live cluster at the timestamp below. " +
+    "Nothing regenerates or verifies this file, and CI does not consume it. " +
+    "It is evidence of a past run, not a current guarantee. For reproducible " +
+    "verification run `npm run test:e2e`, which drives the Docker emulator.",
+  packageVersion: pkgVersion,
   timestamp: new Date().toISOString(),
   cluster: { nodes: nodes.length, vms: vms.length, cts: cts.length },
   totals: { catalog: distCatalog.toolCatalog.length, attempted: 0, passed: 0, failed: 0, skipped: 0, guarded: 0 },

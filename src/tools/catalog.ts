@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runGuarded } from "../guardian/guardian.js";
+import { defaultRetryPolicy, singleAttemptPolicy } from "../guardian/retryPolicy.js";
 import type { ToolResult } from "../guardian/result.js";
 import type { EndpointDescriptor } from "../proxmox/descriptor.js";
 import type { ToolDescriptor, ToolShape } from "../server/toolMetadata.js";
@@ -65,7 +66,10 @@ const apiTool = (config: {
         : undefined,
     execute: async (args, ctx): Promise<ToolResult<unknown>> =>
       await runGuarded(async () => await ctx.client.requestEndpoint(config.endpoint, args), {
-        timeoutMs: config.endpoint.timeoutMs ?? 20_000
+        timeoutMs: config.endpoint.timeoutMs ?? 20_000,
+        // Only idempotent endpoints may be retried. `idempotent` defaults to
+        // false above, so anything that mutates state gets a single attempt.
+        retryPolicy: (config.idempotent ?? false) ? defaultRetryPolicy : singleAttemptPolicy
       })
   };
 };
@@ -102,7 +106,7 @@ coreFixed.push(
   {
     name: "pve_run_remote_diagnostic", description: "Run safe diagnostic command in container.", category: "remote", module: "core", accessTier: "read-execute", destructive: false,
     confirmRequired: false, idempotent: true, transport: "both", aliases: ["runRemoteDiagnostic"], inputShape: { ctid: z.number().int().positive(), command: z.string().min(1) },
-    execute: async (args, ctx) => await runRemoteDiagnostic(ctx.ssh, Number(args.ctid), String(args.command))
+    execute: async (args, ctx) => await runRemoteDiagnostic(ctx.router, Number(args.ctid), String(args.command))
   },
   {
     name: "pve_ssh_batch_diagnostics", description: "Run SSH batch diagnostics.", category: "remote", module: "core", accessTier: "read-only", destructive: false,
@@ -112,17 +116,17 @@ coreFixed.push(
   {
     name: "pve_exec_in_container", description: "Run command in container via pct exec.", category: "remote", module: "advanced", accessTier: "full", destructive: true,
     confirmRequired: true, idempotent: false, transport: "both", aliases: ["execInContainer"], inputShape: withConfirm({ ctid: z.number().int().positive(), command: z.string().min(1) }),
-    execute: async (args, ctx) => await execInContainer(ctx.ssh, Number(args.ctid), String(args.command))
+    execute: async (args, ctx) => await execInContainer(ctx.router, Number(args.ctid), String(args.command))
   },
   {
     name: "pve_docker_ps_in_container", description: "Run docker ps in container.", category: "remote", module: "advanced", accessTier: "read-execute", destructive: false,
     confirmRequired: false, idempotent: true, transport: "both", aliases: ["dockerPsInContainer"], inputShape: { ctid: z.number().int().positive() },
-    execute: async (args, ctx) => await dockerPsInContainer(ctx.ssh, Number(args.ctid))
+    execute: async (args, ctx) => await dockerPsInContainer(ctx.router, Number(args.ctid))
   },
   {
     name: "pve_docker_logs_in_container", description: "Run docker logs in container.", category: "remote", module: "advanced", accessTier: "read-execute", destructive: false,
     confirmRequired: false, idempotent: true, transport: "both", aliases: ["dockerLogsInContainer"], inputShape: { ctid: z.number().int().positive(), containerName: z.string().min(1), tail: z.number().int().min(1).max(2000).optional() },
-    execute: async (args, ctx) => await dockerLogsInContainer(ctx.ssh, Number(args.ctid), String(args.containerName), Number(args.tail ?? 200))
+    execute: async (args, ctx) => await dockerLogsInContainer(ctx.router, Number(args.ctid), String(args.containerName), Number(args.tail ?? 200))
   }
 );
 

@@ -1,7 +1,8 @@
 import { runGuarded } from "../guardian/guardian.js";
+import { defaultRetryPolicy, singleAttemptPolicy } from "../guardian/retryPolicy.js";
 import type { ToolResult } from "../guardian/result.js";
-import { pctExec } from "../ssh/pctExec.js";
-import type { SshBatchOptions } from "../ssh/sshClient.js";
+import { PctExecError, pctExecOn } from "../ssh/pctExec.js";
+import type { NodeRouter } from "../ssh/nodeRouter.js";
 
 const dockerNamePattern = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
@@ -29,20 +30,68 @@ const allowedDiagnosticCommands = [
   "docker ps --format '{{.Names}} {{.Status}}'"
 ] as const;
 
+/**
+ * Runs a command in a container, on whichever node hosts it.
+ *
+ * The router yields candidate routes in preference order. Only a connectivity
+ * failure justifies trying the next one: if `pct` itself reported an error, the
+ * command really did run and re-running it elsewhere would execute it twice.
+ *
+ * `retryable` must only be set for commands known to be safe to repeat.
+ * `withTimeout` does not cancel the underlying ssh process, so a retry after a
+ * timeout can run concurrently with the original command.
+ */
+const runPctExec = async (
+  router: NodeRouter,
+  ctid: number,
+  command: string,
+  retryable: boolean
+): Promise<ToolResult<unknown>> => {
+  return await runGuarded(
+    async () => {
+      const routes = await router.routesForGuest(ctid);
+      let lastError: unknown;
+
+      for (const route of routes) {
+        try {
+          const result = await pctExecOn(route, ctid, command);
+          router.rememberWorkingRoute(result.node, result.route);
+          return { stdout: result.stdout, node: result.node, route: result.route };
+        } catch (error) {
+          lastError = error;
+          if (error instanceof PctExecError && error.isConnectivityFailure) {
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(`Could not reach any node able to run commands for CT ${ctid}.`);
+    },
+    {
+      timeoutMs: 20_000,
+      retryPolicy: retryable ? defaultRetryPolicy : singleAttemptPolicy
+    }
+  );
+};
+
 export const execInContainer = async (
-  ssh: SshBatchOptions,
+  router: NodeRouter,
   ctid: number,
   command: string
 ): Promise<ToolResult<unknown>> => {
-  return await runGuarded(async () => ({ stdout: await pctExec(ssh, ctid, command) }), { timeoutMs: 20_000 });
+  // Caller-supplied command: never repeat it automatically.
+  return await runPctExec(router, ctid, command, false);
 };
 
-export const dockerPsInContainer = async (ssh: SshBatchOptions, ctid: number): Promise<ToolResult<unknown>> => {
-  return await execInContainer(ssh, ctid, "docker ps");
+export const dockerPsInContainer = async (router: NodeRouter, ctid: number): Promise<ToolResult<unknown>> => {
+  return await runPctExec(router, ctid, "docker ps", true);
 };
 
 export const dockerLogsInContainer = async (
-  ssh: SshBatchOptions,
+  router: NodeRouter,
   ctid: number,
   containerName: string,
   tail = 200
@@ -55,11 +104,11 @@ export const dockerLogsInContainer = async (
     );
   }
 
-  return await execInContainer(ssh, ctid, `docker logs --tail ${tail} ${shellEscape(containerName)}`);
+  return await runPctExec(router, ctid, `docker logs --tail ${tail} ${shellEscape(containerName)}`, true);
 };
 
 export const runRemoteDiagnostic = async (
-  ssh: SshBatchOptions,
+  router: NodeRouter,
   ctid: number,
   command: string
 ): Promise<ToolResult<unknown>> => {
@@ -79,5 +128,6 @@ export const runRemoteDiagnostic = async (
     };
   }
 
-  return await execInContainer(ssh, ctid, command);
+  // Allow-listed read-only diagnostics are safe to repeat.
+  return await runPctExec(router, ctid, command, true);
 };

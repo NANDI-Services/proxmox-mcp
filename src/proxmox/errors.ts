@@ -7,6 +7,18 @@ export class ProxmoxHttpError extends Error {
   }
 }
 
+/**
+ * Raised when Proxmox answers 2xx with a body that is not JSON. In practice this
+ * means something other than the Proxmox API responded -- a reverse proxy, a
+ * captive portal, or an SSO login page.
+ */
+export class ProxmoxResponseFormatError extends Error {
+  public constructor(message: string, public readonly snippet?: string) {
+    super(message);
+    this.name = "ProxmoxResponseFormatError";
+  }
+}
+
 export const describeProxmoxHttpError = (error: ProxmoxHttpError): { message: string; hint?: string } => {
   if (error.status === 401) {
     return {

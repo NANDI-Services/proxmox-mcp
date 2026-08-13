@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ProxmoxClient } from "../proxmox/client.js";
+import { NodeRouter } from "../ssh/nodeRouter.js";
 import type { RuntimeConfig } from "../config/validate.js";
 import { toolCatalog } from "../tools/catalog.js";
 import { loadPolicySettings, PolicyEngine } from "./policy.js";
@@ -27,7 +28,7 @@ type RegistryOptions = {
   transport: "stdio" | "http";
 };
 
-export const registerTools = (server: McpServer, config: RuntimeConfig, options: RegistryOptions): void => {
+export const registerTools = (server: McpServer, config: RuntimeConfig, options: RegistryOptions): Set<string> => {
   const proxmoxClient = new ProxmoxClient(config);
   const ssh = {
     host: config.sshHost,
@@ -37,8 +38,15 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
     timeoutMs: 20_000
   };
 
+  // One router per server instance so the discovered per-node route stays
+  // cached for the process lifetime instead of being probed on every call.
+  const router = new NodeRouter(proxmoxClient, config);
+
   const policy = new PolicyEngine(loadPolicySettings());
   let registered = 0;
+  // Which canonical tools survived policy filtering. Prompt recipes are gated
+  // on this so a read-only install is never offered a recipe it cannot run.
+  const registeredNames = new Set<string>();
 
   for (const descriptor of toolCatalog) {
     if (!policy.shouldRegister(descriptor, options.transport)) {
@@ -96,10 +104,11 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
           });
         }
 
-        return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
+        return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, router, transport: options.transport }));
       }
     );
     registered += 1;
+    registeredNames.add(descriptor.name);
 
     for (const alias of descriptor.aliases ?? []) {
       server.registerTool(
@@ -149,7 +158,7 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
             });
           }
 
-          return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, transport: options.transport }));
+          return asMcp(await descriptor.execute(args as Record<string, unknown>, { client: proxmoxClient, ssh, router, transport: options.transport }));
         }
       );
       registered += 1;
@@ -157,4 +166,5 @@ export const registerTools = (server: McpServer, config: RuntimeConfig, options:
   }
 
   logger.info("Tool registry initialized", { registered, transport: options.transport });
+  return registeredNames;
 };

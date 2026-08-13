@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { ToolResult } from "../guardian/result.js";
 import type { ProxmoxClient } from "../proxmox/client.js";
+import type { NodeRouter } from "../ssh/nodeRouter.js";
 import type { SshBatchOptions } from "../ssh/sshClient.js";
 
 export const accessTierValues = ["read-only", "read-execute", "full"] as const;
@@ -35,6 +36,8 @@ export type ToolShape = Record<string, z.ZodTypeAny>;
 export type ToolExecutionContext = {
   client: ProxmoxClient;
   ssh: SshBatchOptions;
+  /** Resolves which cluster node hosts a guest, and how to reach it. */
+  router: NodeRouter;
   transport: "stdio" | "http";
 };
 

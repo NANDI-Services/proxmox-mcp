@@ -8,6 +8,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { RuntimeConfig } from "../config/validate.js";
 import { registerTools } from "./toolRegistry.js";
+import { registerPrompts } from "./prompts.js";
 import { logger } from "../logging/logger.js";
 
 export type RunningServer = {
@@ -164,12 +165,16 @@ const createServerInstance = (config: RuntimeConfig, transport: "stdio" | "http"
     },
     {
       capabilities: {
-        tools: {}
+        tools: {},
+        // Without this the client never asks for the prompt list, so the
+        // recipes would be registered and never seen.
+        prompts: {}
       }
     }
   );
 
-  registerTools(server, config, { transport });
+  const registeredTools = registerTools(server, config, { transport });
+  registerPrompts(server, registeredTools);
   return server;
 };
 

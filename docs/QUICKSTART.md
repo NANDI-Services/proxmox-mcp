@@ -1,5 +1,12 @@
 # Quickstart
 
+> **These examples are PowerShell.** Line continuations use a backtick and paths
+> use `$env:USERPROFILE`. On macOS and Linux use `\` and `$HOME` instead — the
+> commands themselves are identical.
+>
+> New to MCP servers? [EMPEZAR.md](EMPEZAR.md) walks through the whole thing
+> step by step instead of assuming you know which flags you want.
+
 ## Fast install (Windows)
 ```powershell
 npm install -g nandi-proxmox-mcp
@@ -46,10 +53,22 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-win.ps1 `
 ```
 
 ## What you need before setup
-- Proxmox API token created in your own Proxmox panel.
-- SSH key configured for batch mode on the Proxmox host.
+
+- A Proxmox API token, created in your own Proxmox. npm cannot give you one.
+- An SSH key **only** if you want to run commands inside containers. Every REST
+  tool works without it, and setup asks before requiring any of it.
+
+The fastest way to the token is to let the tool write the commands for you:
+
+```powershell
+npx nandi-proxmox-mcp bootstrap --tier read-only --new-ssh-key
+```
+
+It connects to nothing. Paste its output into the Proxmox web UI under
+**Datacenter → Shell**, which needs no SSH access of its own.
 
 Read full setup guides:
+- `EMPEZAR.md` (step by step, Spanish)
 - `PROXMOX_SETUP.md`
 - `SSH_SETUP.md`
 - `VSCODE_SETUP.md`

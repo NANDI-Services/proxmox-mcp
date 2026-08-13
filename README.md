@@ -91,7 +91,15 @@ HTTP transport:
 
 ### Local config file
 
-Setup writes `.nandi-proxmox-mcp/config.json` and `.vscode/mcp.json`.
+Setup writes one credentials file per configured Proxmox,
+`.nandi-proxmox-mcp/<instance>.json`, plus a registration entry in each client
+config it was asked for — `.mcp.json` for Claude Code and `.vscode/mcp.json` for
+VS Code, by default both.
+
+The credentials file is the only one holding the token, and it is gitignored.
+When `NANDI_PROXMOX_CONFIG` is not set, the server discovers it: a single
+configured instance is used automatically, and more than one is an error naming
+them rather than a guess.
 
 The config loader now rejects:
 - empty or malformed config paths
@@ -100,12 +108,43 @@ The config loader now rejects:
 
 ## Quick start
 
-Guided setup:
+> **Never used an MCP before?** Start with
+> [docs/EMPEZAR.md](docs/EMPEZAR.md) — a step-by-step guide (in Spanish) that
+> assumes no prior MCP knowledge and covers creating the Proxmox token, which
+> is the part that trips most people up.
+
+You need an API token from your own Proxmox first. This prints the commands
+that create one, ready to paste into the Proxmox shell — it connects to
+nothing:
 
 ```powershell
-npx nandi-proxmox-mcp setup
+npx nandi-proxmox-mcp bootstrap --tier read-only
+```
+
+Then guided setup. By default this writes config for **Claude Code**
+(`.mcp.json`) and **VS Code** (`.vscode/mcp.json`), merging into either file if
+it already exists:
+
+```powershell
+npx nandi-proxmox-mcp setup --access-tier read-only
 npx nandi-proxmox-mcp doctor --check mcp-config,nodes,vms,cts,node-status,remote-op
 ```
+
+Start with `--access-tier read-only`. The server's built-in default is `full`,
+which exposes every destructive tool including arbitrary command execution;
+passing the flag writes the tier explicitly into the client config so the
+choice is visible rather than implicit. Raise it once you trust the setup.
+
+Pick specific clients, or print a block for any other MCP client:
+
+```powershell
+npx nandi-proxmox-mcp setup --clients claude-code
+npx nandi-proxmox-mcp setup --print-config          # writes nothing, safe to pipe
+```
+
+`.mcp.json` holds only a config path and policy settings, so it is safe to
+commit and share. Your API token stays in `.nandi-proxmox-mcp/config.json`,
+which is gitignored.
 
 Direct run with environment variables:
 
@@ -163,7 +202,19 @@ Users are responsible for:
 
 ## HTTP hardening
 
-When `MCP_TRANSPORT=http` is enabled, the server now applies:
+> **The HTTP transport performs no authentication.** There is no bearer token,
+> API key, or client-certificate check on `POST /mcp`; the controls below are
+> network-level only. `MCP_HOST` also defaults to `0.0.0.0`, and the host
+> allowlist includes your configured Proxmox and SSH hosts. Anyone who can
+> reach the port and send a matching `Host` header gets the full registered
+> tool surface — which, with the default `PVE_ACCESS_TIER=full`, includes
+> destructive tools and arbitrary command execution.
+>
+> Only enable `MCP_TRANSPORT=http` on a trusted network, behind an
+> authenticating reverse proxy, or bound to `127.0.0.1` via `MCP_HOST`. The
+> default stdio transport is not affected: it has no network surface.
+
+When `MCP_TRANSPORT=http` is enabled, the server applies:
 
 - host allowlist enforcement, including wildcard-bind protection
 - origin validation for requests that send an `Origin` header
@@ -239,7 +290,12 @@ npm pack --dry-run
 
 ## Documentation Maintenance Policy
 
-This repository enforces a pre-commit documentation sync gate.
+This repository follows a documentation sync policy, enforced in review rather than by a git hook.
+
+> There is no pre-commit hook. The one gate that *is* automated is in CI
+> (`.github/workflows/ci.yml`): it regenerates `docs/TOOLS.md` and fails the
+> build on any drift. Note also that a repo-local `.git/hooks/pre-commit` would
+> not run on a machine where `core.hooksPath` is redirected, which is common.
 
 - Before closing a `change`, `fix`, or `refactor`, evaluate whether `README.md`, `AGENTS.md`, and `CONTRIBUTING.md` must be updated.
 - If a document is relevant to the behavioral or process impact, it must be updated in the same change set.
@@ -248,6 +304,8 @@ This repository enforces a pre-commit documentation sync gate.
 
 ## Docs
 
+- [docs/EMPEZAR.md](docs/EMPEZAR.md) — start here if MCP servers are new to you
+- [docs/CLAUDE_CODE_SETUP.md](docs/CLAUDE_CODE_SETUP.md)
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
 - [docs/PERMISSIONS.md](docs/PERMISSIONS.md)
 - [docs/SECURITY.md](docs/SECURITY.md)

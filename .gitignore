@@ -11,3 +11,26 @@ coverage/
 .mcpregistry_registry_token
 marketplace/mcp-registry/.mcpregistry_github_token
 marketplace/mcp-registry/.mcpregistry_registry_token
+
+# Local wiring of whoever maintains this repo. This repository publishes the
+# tool; it is not one person's installation. (In a *consumer's* project .mcp.json
+# is meant to be committed and shared -- the opposite call is right there.)
+.mcp.json
+
+# Agent skills live in .agents/ and are linked from .claude/skills/. They work
+# locally, but the link target is never committed, so publishing the symlinks
+# would leave broken links in every clone. .agents/ is currently only covered by
+# one machine's global gitignore; declaring it here makes it environment-independent.
+.claude/
+.agents/
+
+# Written by scripts/validate-live-tools.mjs when a maintainer validates against
+# their own Proxmox. It describes that cluster, so it must never be committed.
+docs/E2E_LIVE_REPORT.json
+
+# Emulator material is generated per run and must never be committed:
+# CI runs a blocking gitleaks scan over the whole repo.
+emulator/.secrets/
+**/.secrets/
+emulator/**/*.key
+emulator/**/*.crt

@@ -15,7 +15,9 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/no-misused-promises": ["error", { "checksVoidReturn": false }]
+      "@typescript-eslint/no-misused-promises": ["error", { "checksVoidReturn": false }],
+      // `const { a: _a, ...rest }` is the idiomatic way to omit a key.
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }]
     }
   },
   {
@@ -29,6 +31,26 @@ export default tseslint.config(
         process: "readonly",
         console: "readonly"
       }
+    }
+  },
+  {
+    // Emulator sources are plain Node ESM, not part of the published package.
+    files: ["emulator/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        clearTimeout: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        setTimeout: "readonly"
+      }
+    },
+    rules: {
+      // `const { a: _a, ...rest }` is the idiomatic way to omit keys.
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }]
     }
   }
 );

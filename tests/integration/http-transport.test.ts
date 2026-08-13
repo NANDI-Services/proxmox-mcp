@@ -22,7 +22,8 @@ const fakeConfig: RuntimeConfig = {
   sshHost: "pve.local",
   sshPort: 22,
   sshUser: "root",
-  sshKeyPath: "C:/id_ed25519"
+  sshKeyPath: "C:/id_ed25519",
+  sshStrategy: "auto"
 };
 
 type RawHttpResponse = {

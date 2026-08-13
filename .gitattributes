@@ -1,0 +1,24 @@
+# Line endings.
+#
+# Without this file, Git on Windows (core.autocrlf=true) checks text files out
+# with CRLF. That is harmless for TypeScript, but it breaks the shell scripts
+# that run inside the emulator's Linux containers: a `#!/bin/sh` shebang becomes
+# `#!/bin/sh\r`, and the container fails with a "bad interpreter" error that says
+# nothing about line endings.
+#
+# `text=auto` stores everything with LF in the repository; `eol=lf` also checks
+# it out with LF on every platform, so a Windows contributor gets working
+# scripts and clean diffs.
+* text=auto eol=lf
+
+# Belt and braces for the files where CRLF is an actual failure, not cosmetics.
+*.sh text eol=lf
+Dockerfile text eol=lf
+emulator/ssh/pct text eol=lf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.ico binary
+*.tgz binary
+*.gz binary

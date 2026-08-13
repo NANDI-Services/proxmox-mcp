@@ -1,0 +1,64 @@
+#!/bin/bash
+# Stub of the Proxmox `pct` CLI, backed by the fake API's control plane so that
+# container state stays consistent between the REST API and SSH paths.
+#
+# Like the real `pct`, this is NODE-LOCAL: it refuses containers that live on a
+# different node. That is precisely what forces callers to resolve the owning
+# node first, so the emulator reproduces the constraint rather than hiding it.
+#
+# Only the subcommand the MCP server actually uses is implemented:
+#   pct exec <ctid> -- <command...>
+set -uo pipefail
+
+# Read from files, not the environment: sshd strips env vars from remote
+# command sessions, so anything passed via docker `environment:` is absent here.
+read_or_default() {
+  if [ -r "$1" ]; then
+    tr -d '\r\n' < "$1"
+  else
+    printf '%s' "$2"
+  fi
+}
+
+CONTROL_URL="$(read_or_default /etc/pve-control-url "http://pve-api:8765")"
+THIS_NODE="$(read_or_default /etc/pve-node-name "pve01")"
+
+if [ "${1:-}" != "exec" ]; then
+  echo "pct: unimplemented subcommand '${1:-}' (emulator supports 'exec' only)" >&2
+  exit 255
+fi
+
+CTID="${2:-}"
+if [ -z "$CTID" ]; then
+  echo "pct: missing container id" >&2
+  exit 255
+fi
+
+# Drop the `--` separator that pctExec always emits.
+shift 2
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+STATUS_JSON="$(curl -fsS "${CONTROL_URL}/_control/lxc/${CTID}" 2>/dev/null)"
+if [ -z "$STATUS_JSON" ]; then
+  echo "CT ${CTID} does not exist" >&2
+  exit 2
+fi
+
+# Node locality check, mirroring real pct behaviour.
+OWNER_NODE="$(printf '%s' "$STATUS_JSON" | sed -n 's/.*"node":"\([^"]*\)".*/\1/p')"
+if [ -n "$OWNER_NODE" ] && [ "$OWNER_NODE" != "$THIS_NODE" ]; then
+  echo "Configuration file 'nodes/${THIS_NODE}/lxc/${CTID}.conf' does not exist" >&2
+  exit 2
+fi
+
+case "$STATUS_JSON" in
+  *'"status":"running"'*) ;;
+  *)
+    echo "CT ${CTID} is not running" >&2
+    exit 2
+    ;;
+esac
+
+exec "$@"

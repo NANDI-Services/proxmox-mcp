@@ -3,7 +3,9 @@
 import { Command } from "commander";
 import { runSetup } from "./setup.js";
 import { runDoctor } from "./doctor.js";
+import { runBootstrap, type BootstrapOptions } from "./bootstrap.js";
 import { loadFileConfig } from "../config/fileConfig.js";
+import { findInstances } from "../config/instances.js";
 import { loadEnvConfig } from "../config/env.js";
 import { logger } from "../logging/logger.js";
 import { installGlobalProcessErrorHandlers } from "../runtime/processGuards.js";
@@ -12,6 +14,19 @@ import { startMcpServer } from "../server/mcpServer.js";
 const program = new Command();
 
 program.name("nandi-proxmox-mcp").description("Proxmox MCP server - open source, powered by NANDI Services").version("0.2.4");
+
+program
+  .command("bootstrap")
+  .description("Print the commands that create a Proxmox API token, ready to paste into the Proxmox shell")
+  .option("--user <user>", "Proxmox user to create, without realm", "mcp")
+  .option("--realm <realm>", "Proxmox realm", "pve")
+  .option("--token-name <name>", "API token name", "nandi")
+  .option("--tier <tier>", "Permissions to grant: read-only, read-execute, full", "read-only")
+  .option("--ssh-key <path>", "Public key to authorize on the node (only for container command execution)")
+  .option("--new-ssh-key", "Generate a new ed25519 keypair first, then authorize it")
+  .action(async (options: BootstrapOptions) => {
+    await runBootstrap(options);
+  });
 
 program
   .command("setup")
@@ -28,6 +43,12 @@ program
   .option("--ssh-user <user>", "SSH user", "root")
   .option("--ssh-key-path <path>", "SSH private key path")
   .option("--skip-connectivity", "Write config files without testing API/SSH connectivity")
+  .option("--clients <ids>", "Comma-separated client configs to write: claude-code,vscode")
+  .option("--access-tier <tier>", "Tool surface to expose: read-only, read-execute, full")
+  .option("--module-mode <mode>", "Module scope to expose: core, advanced")
+  .option("--print-config", "Print a paste-ready MCP config to stdout and write nothing")
+  .option("--name <name>", "Instance name for this Proxmox (default: discovered cluster or node name)")
+  .option("--scope <scope>", "Where to store credentials: project (default) or user", "project")
   .action(async (options) => {
     await runSetup(options);
   });
@@ -37,8 +58,30 @@ program
   .description("Run post-install checks")
   .option("--check <checks>", "Comma-separated checks: mcp-config,nodes,vms,cts,node-status,remote-op")
   .option("--ctid <id>", "Container ID for pct exec validation", Number)
-  .action(async (options: { check?: string; ctid?: number }) => {
+  .option("--clients <ids>", "Comma-separated client configs to check: claude-code,vscode")
+  .option("--name <name>", "Which configured Proxmox instance to check")
+  .action(async (options: { check?: string; ctid?: number; clients?: string; name?: string }) => {
     await runDoctor(options);
+  });
+
+program
+  .command("list")
+  .description("List the Proxmox instances configured on this machine")
+  .action(async () => {
+    const instances = await findInstances(process.cwd());
+
+    if (instances.length === 0) {
+      process.stdout.write("No Proxmox instances configured yet. Run `nandi-proxmox-mcp setup`.\n");
+      return;
+    }
+
+    process.stdout.write(`Configured Proxmox instances (${instances.length}):\n\n`);
+    for (const instance of instances) {
+      process.stdout.write(`  ${instance.name}\n`);
+      process.stdout.write(`    scope:  ${instance.scope}\n`);
+      process.stdout.write(`    config: ${instance.configPath}\n`);
+      process.stdout.write(`    tools:  prefixed with "${instance.serverKey}"\n\n`);
+    }
   });
 
 program

@@ -2,8 +2,8 @@
   "marketplace": {
     "name": "NANDI Plugins Marketplace",
     "description": "Custom marketplace for NANDI MCP and agent plugins.",
-    "owner": "ezesc",
-    "support": "https://github.com/ezesc/proxmox-mcp/issues"
+    "owner": "NANDI-Services",
+    "support": "https://github.com/NANDI-Services/proxmox-mcp/issues"
   },
   "plugins": [
     {
