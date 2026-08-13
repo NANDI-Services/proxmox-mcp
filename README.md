@@ -40,6 +40,46 @@ Examples:
 
 The server returns a structured `CONFIRMATION_REQUIRED` error when confirmation is missing. This behavior is unchanged and reinforced.
 
+## Human approval
+
+`confirm=true` is supplied by the agent, not by you. A model that reads the rejection can simply
+retry with the flag set, so on its own that check guards against an accident rather than against a
+confident agent — and it never asks you anything.
+
+So the 47 tools that require confirmation are also announced to the client as needing a person:
+
+```json
+"_meta": { "anthropic/requiresUserInteraction": true }
+```
+
+In Claude Code 2.1.199 and later, a tool marked this way prompts on **every** call — including in
+`auto` and `bypassPermissions` modes — and cannot be pre-approved by an `allow` rule or by a
+`PreToolUse` hook returning `allow`. Under `--permission-prompt-tool` an automated approval is
+converted to a denial, and Remote Control withholds one-tap approval and sends you to the full
+prompt. The operator who answered is the one who authorised the operation.
+
+One caveat, measured on 2.1.229 rather than taken from the documentation: the prompt still offers
+*"Yes, and don't ask again"*, even though the documentation says a flagged tool has no such option.
+Choosing it writes an `allow` rule that **does not** retire the gate — the next call prompts again.
+So the behaviour is right and only the button is misleading. Do not read its absence as the signal
+that the guard is on; verify by calling a gated tool twice.
+
+Starting and resuming a guest are deliberately left out: they change state without destroying
+anything, and a guard people resent is a guard people route around.
+
+`setup` additionally writes matching `permissions.ask` rules into `.claude/settings.json`, which
+cover Claude Code versions that predate the annotation. Rules are evaluated deny, then ask, then
+allow — first match wins — so an `ask` rule survives both `bypassPermissions` and a later
+"yes, don't ask again". For an install that was configured by hand rather than through `setup`:
+
+```bash
+nandi-proxmox-mcp harden              # every configured instance
+nandi-proxmox-mcp harden --name lab   # just one
+```
+
+Both mechanisms are Claude Code specific. In any other client the guards are `confirm=true` and the
+access tier, so choose the tier deliberately there.
+
 ## Access tiers
 
 - `read-only`
@@ -197,6 +237,7 @@ Users are responsible for:
 ### Safety Controls Implemented
 - Access tiers (read-only, read-execute, full)
 - Confirmation required for destructive operations
+- Human approval required for those same operations, see [Human approval](#human-approval)
 - Input validation and command hardening
 - Rate limiting and request validation
 

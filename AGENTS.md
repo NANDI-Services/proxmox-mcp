@@ -33,6 +33,24 @@
 - Verificar `/health`, `/ready`, `/mcp`.
 - Verificar rechazo por host inválido, parse error JSON, invalid JSON-RPC y rate limit 429.
 
+### 2b) Gate humano sobre operaciones destructivas (bloqueante)
+
+El gate vive en el `_meta` del `tools/list`, no en la lógica del tool, así que un refactor del
+registry puede desactivarlo sin romper un solo test de comportamiento. Verificar el cable, no el
+código, contra el build que se va a publicar:
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | PVE_ACCESS_TIER=full PVE_MODULE_MODE=advanced node dist/src/cli/main.js run
+```
+
+- Esperado: 47 tools con `anthropic/requiresUserInteraction: true`.
+- Los aliases (`stopVM`, `stopContainer`, `execInContainer`) tienen que estar marcados: son nombres
+  de tool separados en el protocolo y su `_meta` se arma en otra rama del registry.
+- `pve_start_qemu_vm`, `startVM` y cualquier tool de lectura tienen que salir **sin** la marca.
+
 ### 3) Pre-publish de paquete
 - `npm pack --dry-run`
 - `npm pack`

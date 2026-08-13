@@ -18,6 +18,7 @@ import {
   sanitizeInstanceName,
   type InstanceScope
 } from "../config/instances.js";
+import { writeHumanGateRules } from "../config/permissions.js";
 import { readClusterTopology, type ClusterTopology } from "../ssh/nodeRouter.js";
 import { parseTier, type AccessTier } from "./bootstrap.js";
 import {
@@ -894,6 +895,21 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
     }
   }
 
+  // Put a person in front of every destructive tool. The server annotates them
+  // for clients that understand it, but a rule the operator can read and audit
+  // is worth writing too -- and it is what protects older Claude Code versions.
+  let humanGate: { path: string; added: number; total: number } | undefined;
+  let humanGateError: string | undefined;
+  if (clientIdsToWrite.includes("claude-code")) {
+    try {
+      humanGate = await writeHumanGateRules(instance.serverKey, scope, process.cwd());
+    } catch (error) {
+      // Never fail a working install over the guard: report it and let the
+      // operator run `harden` once the file is fixed.
+      humanGateError = error instanceof Error ? error.message : "Could not write permission rules";
+    }
+  }
+
   const connectivity = options.skipConnectivity
     ? [{ check: "Connectivity", ok: true, detail: "Skipped by --skip-connectivity" }]
     : await connectivityChecks(config);
@@ -907,6 +923,26 @@ export const runSetup = async (options: SetupOptions = {}): Promise<void> => {
   process.stdout.write("\nClient configs written:\n");
   for (const line of written) {
     process.stdout.write(`  ${line}\n`);
+  }
+
+  if (humanGate) {
+    process.stdout.write(
+      `\nHuman approval required for ${humanGate.total} destructive tools.\n` +
+        `  Rules written to: ${humanGate.path}${humanGate.added === 0 ? "  (already present)" : ""}\n` +
+        "  Every delete, migrate, rollback and in-container command now stops for a person to\n" +
+        "  answer, and stays that way even in permission modes that skip prompts.\n"
+    );
+    if (clientIdsToWrite.includes("vscode")) {
+      process.stdout.write(
+        "  VS Code has no equivalent rules file. There the guard is the tool annotation plus\n" +
+          "  the access tier, so choose the tier deliberately.\n"
+      );
+    }
+  } else if (humanGateError) {
+    process.stdout.write(
+      `\nWarning: could not write the approval rules. ${humanGateError}\n` +
+        "Fix that file and run `nandi-proxmox-mcp harden` to apply them.\n"
+    );
   }
 
   for (const clientId of clientIdsToWrite) {
