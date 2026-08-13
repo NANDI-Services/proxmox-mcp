@@ -47,6 +47,24 @@ Requisito de infraestructura: el secret `RELEASE_TOKEN` (fine-grained PAT o GitH
 `Contents: write`) tiene que estar en el bypass del ruleset `main-branch-protection`. Sin eso
 el push del bump a main lo rechaza la protección de rama.
 
+**El registry de npm es eventually consistent, y eso rompió el release de 0.3.2.** El paso que
+verifica la versión publicada corría a menos de un segundo del publish y leía la versión
+*anterior*: `0.3.2` se publicó `05:39:27.336Z` y el check todavía veía `0.3.1` a `05:39:28.09`.
+El publish había funcionado; falló el que lo mira. Ahora reintenta 12 veces cada 10s.
+
+Corolario que costó caro: el job murió después de publicar a npm pero antes del MCP Registry y
+del GitHub Release, y **re-ejecutarlo moría en `npm publish`** por versión ya publicada, así que
+la única salida era a mano. Ahora `Publish to npm` saltea si la versión ya está en el registry.
+Cualquier paso de publicación que se agregue tiene que ser re-ejecutable igual: un release es
+una secuencia de escrituras en sistemas distintos, y va a cortarse en el medio alguna vez.
+
+Al completar un release a mano: `gh release create vX.Y.Z --generate-notes` para el Release, y
+el workflow `mcp-publish.yml` (`workflow_dispatch`) para el descriptor del registry.
+
+**Verificar convergencia sin pipe.** `node scripts/verify-registry-entry.mjs ... | tail` devuelve
+el exit code de `tail`, no del script — da 0 con el registry desincronizado. Redirigir a archivo
+y leer `$?`.
+
 ## Runbook para releases manuales (fallback)
 
 ### 1) Gates técnicos (bloqueantes)
