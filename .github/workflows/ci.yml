@@ -18,18 +18,33 @@ jobs:
       # This needs nothing but the checkout, so it fails in seconds rather than
       # after the build and the test suite.
       #
-      # Pinned binary rather than a third-party action, same as the secret scan
-      # below. actionlint shells out to shellcheck for every `run:` block, and
-      # shellcheck is preinstalled on ubuntu-latest, so the bash is linted too.
+      # Pinned binaries rather than third-party actions, same as the secret scan
+      # below. Both of them: actionlint shells out to shellcheck for every `run:`
+      # block, so shellcheck is not an accessory here -- it is what analyses the
+      # bash, and it decides how strict this gate actually is. Taking it from the
+      # runner image instead would let GitHub change that on a day nobody touched
+      # the repo, and a red build with no commit behind it is the expensive kind
+      # to diagnose. `-shellcheck` is passed explicitly so the choice does not
+      # depend on which directory wins in PATH.
+      #
+      # Downloaded into RUNNER_TEMP, not the checkout: the secret scan below
+      # walks the working tree, and there is no reason to hand it two binaries.
       - name: Workflow lint
         run: |
           ACTIONLINT_VERSION="1.7.7"
-          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o actionlint.tar.gz
-          tar -xzf actionlint.tar.gz actionlint
-          sudo install -m 0755 actionlint /usr/local/bin/actionlint
-          actionlint -version
-          shellcheck --version | head -2
-          actionlint
+          SHELLCHECK_VERSION="0.10.0"
+
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o "$RUNNER_TEMP/actionlint.tar.gz"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+
+          curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" -o "$RUNNER_TEMP/shellcheck.tar.xz"
+          tar -xJf "$RUNNER_TEMP/shellcheck.tar.xz" -C "$RUNNER_TEMP" "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+          SHELLCHECK_BIN="$RUNNER_TEMP/shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+          "$RUNNER_TEMP/actionlint" -version
+          "$SHELLCHECK_BIN" --version | head -2
+          "$RUNNER_TEMP/actionlint" -shellcheck "$SHELLCHECK_BIN"
       - uses: actions/setup-node@v5
         with:
           node-version: 20
