@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "v*"
+  # Re-runnable by hand. Every publishing step in this job is idempotent -- npm
+  # skips a version already on the registry, the descriptor publish checks the
+  # registry first -- so re-running a release that died halfway is now the
+  # supported recovery, instead of finishing it manually step by step.
+  #
+  # Dispatch against the tag, not a branch: `gh workflow run release.yml --ref vX.Y.Z`.
+  # Note this cannot rescue a tag cut before this trigger existed: GitHub reads
+  # the trigger list from the file at the dispatched ref, so v0.3.2 and earlier
+  # stay un-dispatchable.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -19,6 +29,40 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      # The push trigger could only ever fire on a `v*` tag, so this job used to
+      # get its ref shape for free. `workflow_dispatch` accepts any ref, which
+      # makes that an assumption rather than a guarantee -- and the steps below
+      # publish to npm, to the MCP Registry and cut a GitHub Release before
+      # anything would notice the ref was a branch.
+      #
+      # Deliberately not gated on `github.event_name`: the version half below is
+      # what catches a tag that disagrees with package.json, and that failure
+      # happened on the push path -- 0.3.1 shipped announcing itself as 0.2.4.
+      # A guard that only covers the new path leaves the one the bug used open.
+      - name: Refuse to publish from an unreleasable ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF_TYPE="${{ github.ref_type }}"
+          REF_NAME="${{ github.ref_name }}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "$REF_TYPE" != "tag" ]]; then
+            echo "Refusing to publish from ${REF_TYPE} '${REF_NAME}'." >&2
+            echo "This job publishes to npm and the MCP Registry; only a tag may do that." >&2
+            exit 1
+          fi
+
+          # This is also the only thing keeping a non-`v*` tag out. `push` filters
+          # `tags: v*`; `workflow_dispatch` filters nothing, so a `backup/...` tag
+          # would otherwise reach the publish steps.
+          if [[ "$REF_NAME" != "v${PKG_VERSION}" ]]; then
+            echo "Tag '${REF_NAME}' disagrees with package.json '${PKG_VERSION}'; expected 'v${PKG_VERSION}'." >&2
+            echo "Publishing past this is how 0.3.1 shipped announcing itself as 0.2.4." >&2
+            exit 1
+          fi
+
+          echo "Publishing ${REF_NAME} (package.json ${PKG_VERSION})."
       - uses: actions/setup-node@v5
         with:
           # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1: the OIDC
@@ -167,8 +211,10 @@ jobs:
           set -euo pipefail
           for attempt in {1..10}; do
             if node scripts/verify-registry-entry.mjs "$MCP_DESCRIPTOR"; then
+              echo "Registry converged after ${attempt} attempt(s)."
               exit 0
             fi
+            echo "attempt ${attempt}: registry has not converged yet, waiting"
             sleep 15
           done
 

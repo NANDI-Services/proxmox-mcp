@@ -58,8 +58,26 @@ la única salida era a mano. Ahora `Publish to npm` saltea si la versión ya est
 Cualquier paso de publicación que se agregue tiene que ser re-ejecutable igual: un release es
 una secuencia de escrituras en sistemas distintos, y va a cortarse en el medio alguna vez.
 
-Al completar un release a mano: `gh release create vX.Y.Z --generate-notes` para el Release, y
-el workflow `mcp-publish.yml` (`workflow_dispatch`) para el descriptor del registry.
+**Un release cortado a la mitad se re-lanza, no se termina a mano.**
+`gh workflow run release.yml --ref vX.Y.Z`. Cada paso publicador consulta primero su destino y
+saltea lo que ya está, así que la corrida completa sólo lo que faltó. Cualquier paso nuevo tiene
+que sostener esa propiedad, o rompe la recuperación para todos los demás.
+
+El job además **rechaza cualquier ref que no sea un tag, y cualquier tag que no coincida con la
+versión de `package.json`**. La segunda mitad no es redundante con `set-version.mjs`: cubre el
+camino de `push`, que es por donde 0.3.1 salió diciendo ser 0.2.4, y es lo único que filtra un tag
+que no sea `v*` — `push` filtra por `tags: v*`, pero `workflow_dispatch` no filtra nada.
+
+Limitación que conviene saber antes de necesitarla: GitHub lee la lista de triggers del archivo
+**en el ref despachado**, no del branch default. Los tags cortados antes de que `release.yml`
+aceptara `workflow_dispatch` no son despachables, y para esos el camino manual sigue siendo
+`gh release create vX.Y.Z --generate-notes` para el Release y el workflow `mcp-publish.yml` para
+el descriptor del registry.
+
+**Nada validaba los workflows hasta que `ci.yml` corrió `actionlint`.** Un error de sintaxis o de
+expresión en `release.yml` no lo atrapaba ningún gate: aparecía al pushear un tag, o sea durante
+un release. Corre primero, antes de `npm ci`, porque no necesita dependencias. Incluye
+`shellcheck` sobre cada bloque `run:`, así que el bash de los workflows también se lintea.
 
 **Verificar convergencia sin pipe.** `node scripts/verify-registry-entry.mjs ... | tail` devuelve
 el exit code de `tail`, no del script — da 0 con el registry desincronizado. Redirigir a archivo
@@ -106,7 +124,8 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 
 ### 4) Publish npm
 
-**El publish lo hace `release.yml` al pushear el tag `v*`, no a mano.** El paquete usa
+**El publish lo hace `release.yml`, nunca `npm publish` a mano.** Lo dispara el push del tag `v*`,
+y se re-lanza con `gh workflow run release.yml --ref vX.Y.Z`. El paquete usa
 trusted publishing (OIDC) contra `NANDI-Services/proxmox-mcp` + `release.yml`, así que no hay
 `NPM_TOKEN` en el repo y no hace falta.
 
