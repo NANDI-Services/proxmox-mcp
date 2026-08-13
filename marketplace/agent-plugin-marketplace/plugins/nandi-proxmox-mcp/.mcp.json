@@ -2,7 +2,7 @@
   "mcpServers": {
     "nandi-proxmox-mcp": {
       "command": "npx",
-      "args": ["nandi-proxmox-mcp@0.3.2", "run"],
+      "args": ["nandi-proxmox-mcp@0.3.3", "run"],
       "env": {
         "PVE_ACCESS_TIER": "read-only"
       }

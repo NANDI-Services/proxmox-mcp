@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.3 - 2026-08-13
+
+**No behaviour changes.** The server, its tools and its configuration are identical to `0.3.2`.
+What ships differently is documentation — `README.md`, `docs/RELEASE.md` and
+`marketplace/mcp-registry/README.md` — plus the version string. The work in this release is in the
+release pipeline, which is not part of the package.
+
+### Changed
+
+- **A release that dies halfway is now finished by re-running it, not by hand.** `release.yml`
+  accepts a manual dispatch (`gh workflow run release.yml --ref vX.Y.Z`), and every publishing step
+  asks its destination before writing, so the re-run completes only what did not happen. `0.3.2`
+  published to npm and then died before the registry and the GitHub Release, and re-running it was
+  impossible because the job had no trigger a person could pull.
+- **The release job refuses to publish from a ref that cannot be one.** Anything that is not a tag,
+  and any tag that disagrees with the version in `package.json`, stops the job before it writes
+  anything. The second check also covers the ordinary push path — publishing past that mismatch is
+  how `0.3.1` shipped announcing itself as `0.2.4`.
+- **CI lints the workflow files.** Nothing validated them before, so a syntax or expression error in
+  the release workflow surfaced only when a tag was pushed, during a release.
+
 ## 0.3.2 - 2026-08-13
 
 ### Fixed
