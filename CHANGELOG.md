@@ -1,6 +1,41 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-08-13
+
+### Added: a person has to approve destructive operations
+
+- **The 47 confirm-required tools now require a human, not just the agent.**
+  `confirm=true` is supplied by the calling model, so a model that reads the
+  `CONFIRMATION_REQUIRED` rejection can simply retry with the flag set: it
+  guarded against an accidental call, never against a determined one, and it
+  never asked the operator anything. Those tools are now advertised with
+  `_meta["anthropic/requiresUserInteraction"]: true`, which makes a supporting
+  client prompt a person on every call — including in permission modes that skip
+  prompts — with `allow` rules and `PreToolUse` hook approvals unable to satisfy
+  it. Under `--permission-prompt-tool` an automated approval becomes a denial.
+- **Aliases carry the gate too.** `stopVM`, `stopContainer` and
+  `execInContainer` are separate tool names on the wire and their `_meta` is
+  built in a separate branch of the registry, so an alias could have executed
+  unprompted while its canonical twin asked. That would have been worse than no
+  gate, because the gate would have looked present.
+- **Starting and resuming a guest are deliberately not gated.** They are flagged
+  `destructive` but destroy nothing, and a guard people resent is a guard people
+  route around.
+- **New command: `nandi-proxmox-mcp harden`.** Writes matching
+  `permissions.ask` rules for every configured instance, or one named with
+  `--name`. `setup` now writes them as part of an install; `harden` is for the
+  installs that never ran it — added with `claude mcp add`, copied between
+  machines, or upgraded from a version that predates the guard.
+
+Verified against Claude Code 2.1.229 on a live cluster rather than from the
+client documentation: the prompt appears under `defaultMode: auto`, and it
+appears again after answering *"Yes, and don't ask again"* — the resulting
+`allow` rule does not retire the gate. Note that the option is still offered,
+contrary to that documentation, so its absence is not a usable signal that the
+guard is active.
+
+Both mechanisms are Claude Code specific. In any other MCP client they are
+ignored, leaving `confirm=true` and `PVE_ACCESS_TIER` as the controls.
 
 ### Fixed: the guided setup was unreachable
 
