@@ -64,6 +64,16 @@ Relatedly, `src/proxmox/client.ts` parses the response body **after** checking t
 
 The server default is `full`. `setup` writes the tier explicitly into the client config so the choice is visible rather than implicit.
 
+### Destructive tools need a human, and the wiring is not inside the tool
+
+What puts a person in front of a call is the descriptor's `confirmRequired`, **not** `destructive`. They differ deliberately: `destructive` also covers start and resume, and prompting to power on a VM is friction that buys nothing — a guard people resent is a guard people route around.
+
+It is enforced twice, because either half alone has a hole. `registerTools` annotates the tool with `anthropic/requiresUserInteraction` in its `_meta` (`src/server/toolRegistry.ts`); that travels with the package and needs no configuration, but only Claude Code 2.1.199 and later understands it. `setup` additionally writes matching `permissions.ask` rules into the client's settings (`src/config/permissions.ts`), which covers older clients and leaves the guard visible in a file an operator can audit. Both survive `bypassPermissions`, and an `ask` rule beats a matching `allow` — rules go deny, then ask, then allow, first match wins — so answering "yes, don't ask again" cannot quietly retire one.
+
+Aliases are included explicitly: `stopVM` and `pve_stop_qemu_vm` are separate tool names on the wire, and a rule naming only one leaves the other open. Both the annotation and the rules derive from `toolCatalog`, never from a list kept alongside them, so they cannot drift as tools are added.
+
+**The gate lives in metadata rather than in the tool's logic, so a refactor of the registry can switch it off without breaking a single behavior test.** `tests/unit/human-gate.test.ts` pins it, but the check that matters probes the built server's `tools/list` — see `AGENTS.md` §2b. Verify the wire, not the code.
+
 ### REST is cluster-wide; SSH is not
 
 Proxmox's `pveproxy` forwards API requests to the owning node, so every REST tool already reaches the whole cluster from a single endpoint. `pct` does not — it is a node-local CLI, so a container on another node is unreachable by running `pct` where you connected.

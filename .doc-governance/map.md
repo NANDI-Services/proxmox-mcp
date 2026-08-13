@@ -1,8 +1,9 @@
 <!-- doc-governance:map v1 -->
-sealed_sha: a6d7e1adfc8753524c7622841e333352423f918f
-sealed_at: 2026-08-12T23:42:43.112Z
+sealed_sha: 1d139e9643be8ee4c304ce1789d841e58791d254
+sealed_at: 2026-08-13T20:20:29.293Z
 tool_version: 0.9.5
-sealed_dirty: []
+sealed_dirty:
+  - 6be9f04354099bbe7eac232ebd4f816198301947 CLAUDE.md
 
 ## Inventory
 
@@ -14,9 +15,11 @@ headings:
   - H3: Por qué se demoró
   - H3: Errores cometidos
   - H3: Qué se aprendió
-  - H2: Runbook obligatorio para próximas releases
+  - H2: Releases: automáticas por push a main
+  - H2: Runbook para releases manuales (fallback)
   - H3: 1) Gates técnicos (bloqueantes)
   - H3: 2) Runtime smoke (HTTP)
+  - H3: 2b) Gate humano sobre operaciones destructivas (bloqueante)
   - H3: 3) Pre-publish de paquete
   - H3: 4) Publish npm
   - H3: 5) Publish MCP Registry / Marketplace
@@ -32,16 +35,31 @@ code_refs:
   - /health
   - /mcp
   - /ready
+  - 0.3.1
+  - 0.3.2
   - 127.0.0.1
   - AGENTS.md
   - CONTRIBUTING.md
+  - NANDI-Services/proxmox-mcp
   - README.md
+  - auto-release.yml
+  - ci.yml
+  - mcp-publish.yml
+  - package.json
+  - release.yml
+  - scripts/set-version.mjs
+  - set-version.mjs
+  - tools/list
+  - validate-package-metadata.mjs
 
 ### CHANGELOG.md
 title: Changelog
 headings:
   - H1: Changelog
-  - H2: Unreleased
+  - H2: 0.3.2 - 2026-08-13
+  - H3: Fixed
+  - H2: 0.3.1 - 2026-08-13
+  - H3: Added: a person has to approve destructive operations
   - H3: Fixed: the guided setup was unreachable
   - H3: Added: onboarding for people who have never used an MCP
   - H3: Corrected documentation
@@ -70,6 +88,7 @@ code_refs:
   - 0.1.1
   - 0.1.2
   - 0.1.3
+  - 0.3.0
   - @modelcontextprotocol/sdk
   - FAQ.md
   - NANDI-Services/proxmox-mcp
@@ -88,6 +107,7 @@ code_refs:
   - error.cause
   - io.github.NANDI-Services/nandi-proxmox-mcp
   - mcp-manifest.json
+  - permissions.ask
 
 ### CLAUDE.md
 title: CLAUDE.md
@@ -100,6 +120,7 @@ headings:
   - H3: Tools are data, not handlers
   - H3: Every call goes through the guardian
   - H3: Which tools exist depends on the environment
+  - H3: Destructive tools need a human, and the wiring is not inside the tool
   - H3: REST is cluster-wide; SSH is not
   - H3: One process per Proxmox
   - H3: Transports
@@ -113,6 +134,7 @@ code_refs:
   - /cluster/resources
   - /etc/pve/priv/authorized_keys
   - AGENTS.md
+  - anthropic/requiresUserInteraction
   - config.json
   - docs/E2E_LIVE_REPORT.json
   - docs/TOOLS.md
@@ -120,6 +142,7 @@ code_refs:
   - emulator/README.md
   - error.cause
   - package.json
+  - permissions.ask
   - process.env
   - scripts/validate-live-tools.mjs
   - scripts/validate-package-metadata.mjs
@@ -127,6 +150,7 @@ code_refs:
   - src/config/clients.ts
   - src/config/fileConfig.ts
   - src/config/instances.ts
+  - src/config/permissions.ts
   - src/guardian/errorMap.ts
   - src/guardian/guardian.ts
   - src/proxmox/client.ts
@@ -137,9 +161,11 @@ code_refs:
   - src/ssh/nodeRouter.ts
   - src/tools/catalog.ts
   - tests/
+  - tests/unit/human-gate.test.ts
   - tests/unit/prompts.test.ts
   - tests/unit/retry-policy.test.ts
   - tests/unit/setupWizard.test.ts
+  - tools/list
   - vitest.config.ts
   - vitest.e2e.config.ts
 
@@ -185,6 +211,7 @@ headings:
   - H2: What stays enabled
   - H2: Required permissions
   - H2: Destructive confirmations
+  - H2: Human approval
   - H2: Access tiers
   - H2: Runtime configuration
   - H3: Environment variables
@@ -205,6 +232,7 @@ headings:
   - H2: Registry and marketplace
   - H2: License
 code_refs:
+  - .claude/settings.json
   - .git/hooks/pre-commit
   - .github/workflows/ci.yml
   - .mcp.json
@@ -212,13 +240,22 @@ code_refs:
   - .vscode/mcp.json
   - /mcp
   - 0.0.0.0
+  - 0.2.4
+  - 0.3.1
+  - 0.x
+  - 1.0.0
   - 127.0.0.1
   - AGENTS.md
   - CONTRIBUTING.md
   - README.md
+  - auto-release.yml
   - core.hooksPath
   - docs/TOOLS.md
+  - package.json
+  - permissions.ask
   - release.yml
+  - scripts/set-version.mjs
+  - scripts/validate-package-metadata.mjs
 
 ### SECURITY.md
 title: Security Policy
@@ -230,7 +267,8 @@ headings:
   - H3: Security Responsibilities
   - H3: Safety Controls Implemented
   - H2: Reporting
-code_refs: []
+code_refs:
+  - permissions.ask
 
 ### docs/CI_SECRETS.md
 title: CI Secrets Policy
@@ -408,12 +446,16 @@ headings:
   - H2: Marketplace
   - H2: CI/CD behavior
   - H2: Troubleshooting
+  - H3: A release published to npm but the registry or the GitHub Release never happened
+  - H3: The release job refuses to start, naming the ref
   - H3: `npm audit` fails because of a withdrawn or dev-only advisory
   - H3: npm package verification complains about repository/source
   - H3: Registry publish fails after npm publish succeeded
   - H3: Marketplace listing does not refresh
 code_refs:
   - .mcp/server.json
+  - 0.2.4
+  - 0.3.1
   - ci.yml
   - marketplace/agent-plugin-marketplace/plugins/nandi-proxmox-mcp/.mcp.json
   - marketplace/agent-plugin-marketplace/plugins/nandi-proxmox-mcp/plugin.json
