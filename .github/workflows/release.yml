@@ -28,7 +28,7 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The push trigger could only ever fire on a `v*` tag, so this job used to
       # get its ref shape for free. `workflow_dispatch` accepts any ref, which
       # makes that an assumption rather than a guarantee -- and the steps below
@@ -63,7 +63,7 @@ jobs:
           fi
 
           echo "Publishing ${REF_NAME} (package.json ${PKG_VERSION})."
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1: the OIDC
           # token exchange is done by the npm CLI itself. On Node 20 (npm 10.x)
@@ -221,6 +221,6 @@ jobs:
           echo "Registry did not converge to the expected descriptor" >&2
           exit 1
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true

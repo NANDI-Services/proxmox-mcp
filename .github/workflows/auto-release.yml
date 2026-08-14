@@ -29,7 +29,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The version is derived from the commits since the last tag, so the
           # default shallow clone would see neither.
@@ -39,7 +39,7 @@ jobs:
           # trigger `release.yml` at all.
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
