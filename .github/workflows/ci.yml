@@ -11,7 +11,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # First, and before `npm ci`: nothing else in this repo validates the
       # workflow files, so until now a syntax or expression error in
       # `release.yml` surfaced only when a tag was pushed -- during a release.
@@ -45,7 +45,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -version
           "$SHELLCHECK_BIN" --version | head -2
           "$RUNNER_TEMP/actionlint" -shellcheck "$SHELLCHECK_BIN"
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -76,7 +76,7 @@ jobs:
         run: npm audit --include=dev --audit-level=high --json > audit-dev-report.json || true
       - name: Upload dev audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: audit-dev-report
           path: audit-dev-report.json
